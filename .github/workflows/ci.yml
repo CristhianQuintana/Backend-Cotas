@@ -56,5 +56,16 @@ jobs:
       - run: npm run test:integration
         env:
           RUN_DB_INTEGRATION: "true"
+          NODE_ENV: test
+          PORT: "3000"
           DATABASE_URL: postgresql://cotas:local_only_dev_password@127.0.0.1:5432/cotas_dev
+          JWT_ACCESS_SECRET: test-only-jwt-access-secret-32chars-min
+          JWT_ISSUER: cotas-backend-test
+          JWT_AUDIENCE: cotas-clients-test
+          MFA_ENCRYPTION_KEY: test-only-mfa-encryption-key-32chars
+          XUI_BASE_URL: http://xui.test.local
+          XUI_USERNAME: xui_test_user
+          XUI_PASSWORD: xui_test_password_not_real
+          XUI_ALLOWED_STREAM_HOSTS: xui.test.local
+          CORS_ORIGINS: http://localhost:3000
       - run: npm run build
