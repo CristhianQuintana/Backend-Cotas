@@ -1,0 +1,114 @@
+name: publish
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cotas
+          POSTGRES_PASSWORD: local_only_dev_password
+          POSTGRES_DB: cotas_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cotas -d cotas_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - id: meta
+        env:
+          OWNER: ${{ github.repository_owner }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -eu
+          printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'
+          owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+          image="ghcr.io/${owner}/backend-cotas:${SHA}"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@14487ce63c7a62a4a324b0bfb37086795e31c6c1 # v6.16.0
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+      - name: Comprobar usuario y arranque
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -eu
+          user=$(docker image inspect "$IMAGE" --format '{{.Config.User}}')
+          test "$user" = "cotas"
+          docker run -d --name cotas-publish-check --network host \
+            -e NODE_ENV=production \
+            -e PORT=3000 \
+            -e RUN_MIGRATIONS=true \
+            -e DATABASE_URL=postgresql://cotas:local_only_dev_password@127.0.0.1:5432/cotas_dev \
+            -e JWT_ACCESS_SECRET=publish-check-jwt-secret-not-a-credential \
+            -e JWT_ISSUER=cotas.local \
+            -e JWT_AUDIENCE=cotas-api \
+            -e MFA_ENCRYPTION_KEY=publish-check-mfa-key-not-a-credential \
+            -e XUI_BASE_URL=https://xui.invalid \
+            -e XUI_USERNAME=publish_check \
+            -e XUI_PASSWORD=publish_check_password \
+            -e XUI_ALLOWED_STREAM_HOSTS=xui.invalid \
+            -e CORS_ORIGINS=https://localhost \
+            -e SWAGGER_ENABLED=false \
+            -e ARGON2_MEMORY_COST=19456 \
+            -e ARGON2_TIME_COST=2 \
+            "$IMAGE"
+          ok=0
+          i=0
+          while [ "$i" -lt 30 ]; do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health/live >/dev/null \
+              && curl -fsS http://127.0.0.1:3000/api/v1/health/ready >/dev/null; then
+              ok=1
+              break
+            fi
+            i=$((i + 1))
+            sleep 2
+          done
+          if [ "$ok" -ne 1 ]; then
+            docker logs cotas-publish-check || true
+            exit 1
+          fi
+          echo "Imagen publicada y comprobada: ${IMAGE}"
+      - if: always()
+        run: docker rm -f cotas-publish-check >/dev/null 2>&1 || true

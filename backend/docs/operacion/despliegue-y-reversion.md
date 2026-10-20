@@ -12,14 +12,11 @@ Objetivo: dos contenedores en el servidor de pruebas. La planificación nombra `
 
 ## Subir y arrancar
 
-En el directorio que contiene `docker-compose.yml`, el `Dockerfile` y `.env`:
+La actualización rutinaria no copia archivos a mano. Un push a `main` que supera la integración publica `ghcr.io/<propietario>/backend-cotas:<sha>` y el runner interno ejecuta `scripts/server-deploy.sh`. La primera instalación del servidor está en `instalacion-ubuntu.md`.
 
-```text
-docker compose up -d --build
-docker compose ps
-```
+El script descarga esa imagen, la etiqueta como `cotas-backend:local` y ejecuta `docker compose up -d --no-build`. No usa `docker compose down -v`. Antes de cambiar contenedores que ya tienen datos, toma `pg_dump` en `/opt/cotas/backups` y conserva las siete copias más recientes.
 
-El servicio `backend` aplica las migraciones y después acepta tráfico. Hay una sola réplica: no levante varias copias con la migración en el arranque.
+Hay una sola réplica. `RUN_MIGRATIONS` vale `true` en un despliegue normal y `false` en una reversión de imagen. El valor entra por el entorno de Compose.
 
 Compruebe `GET /api/v1/health/live` y `GET /api/v1/health/ready`. Después, desde un equipo que alcance la API, `node scripts/smoke-deploy.mjs`. No guarde la salida si en algún momento apareciera una referencia de reproducción: el script no debe imprimirla.
 
@@ -52,9 +49,12 @@ El contenedor `backend` sale con error y Compose lo reinicia. Lea `docker compos
 
 ## Reversión de la imagen
 
-1. Conserve la etiqueta de la imagen que estaba en marcha, por ejemplo `cotas-backend:local` renombrada a un identificador de fecha antes de construir la nueva.
-2. Para volver: etiquete otra vez esa imagen como `cotas-backend:local` y ejecute `docker compose up -d` sin `--build`.
-3. Si la migración nueva no es reversible, restaure la copia. No hay bajada automática de esquema.
-4. La reversión la autoriza quien opera el servidor de pruebas.
+El script guarda la imagen en uso en `/opt/cotas/state/current-image` y la anterior en `previous-image`. El historial breve queda en `deployments.log`. Esas líneas contienen el nombre de la imagen y el SHA, no secretos.
+
+Para volver a una imagen ya publicada, ejecute a mano el workflow `deploy` con la acción `rollback` y el SHA de 40 caracteres. Eso descarga esa imagen, no aplica migraciones y no borra el volumen. No devuelve el esquema de PostgreSQL al estado anterior. Si la migración nueva es incompatible con la imagen vieja, restaure la copia tomada antes del despliegue y no deje que Compose reinicie el backend a ciegas.
+
+Si la salud falla, el script detiene solo el servicio `backend`, deja PostgreSQL en marcha y termina con error. No vuelve solo a la imagen anterior: una migración ya aplicada puede hacer insegura esa vuelta automática.
+
+La reversión la autoriza quien opera el servidor de pruebas. En esta entrega no se ejecutó esa vuelta sobre `10.10.0.31`, porque el runner todavía no está registrado allí.
 
 `docker compose stop` detiene los dos servicios y conserva el volumen. `docker compose down` también conserva el volumen nombrado. `docker compose down -v` lo elimina: no lo use como reversión.

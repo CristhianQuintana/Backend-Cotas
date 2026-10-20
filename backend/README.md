@@ -69,6 +69,10 @@ La UI de OpenAPI, en desarrollo en el host, está en `/api/docs`. El archivo ver
 - El contenedor no arranca y el puerto 3100 está ocupado: hay una API de host en ese puerto. Deténgala o cambie `BACKEND_PORT`.
 - Las pruebas fallan al cargar `@nestjs/common`: ejecute los scripts npm. Jest necesita `--experimental-vm-modules`, ya incluido en `npm test` y `npm run test:e2e`.
 
+## Integración continua
+
+Los cambios hacia `main` se prueban en GitHub Actions, publican una imagen identificada por el SHA del commit y, con un runner dentro de la red de la empresa, actualizan el servidor de pruebas. El procedimiento está en `docs/operacion/cicd.md`. Un pull request no despliega.
+
 ## Límites
 
 Compose no termina TLS. Antes de exponer la API fuera de la red de pruebas, publíquela detrás del Nginx de `deploy/nginx/api.conf.example`. El límite de intentos de login es por proceso. La referencia de reproducción incluye la credencial de la línea; el tratamiento está en `docs/integraciones/autorizacion-reproduccion.md`.

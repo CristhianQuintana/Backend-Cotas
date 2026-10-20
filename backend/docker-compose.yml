@@ -36,6 +36,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_only_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-cotas_dev}
       POSTGRES_HOST: postgres
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-3100}:3000"
     depends_on:

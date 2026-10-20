@@ -1,0 +1,82 @@
+name: deploy
+
+on:
+  workflow_run:
+    workflows: [publish]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: deploy actualiza a un SHA. rollback vuelve a una imagen ya publicada sin migrar.
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      image_sha:
+        description: SHA completo del commit, 40 hexadecimales.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-pruebas
+  cancel-in-progress: false
+
+jobs:
+  server:
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main')
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_SHA: ${{ github.event.inputs.image_sha }}
+          INPUT_ACTION: ${{ github.event.inputs.action }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -eu
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            sha=$INPUT_SHA
+            action=$INPUT_ACTION
+          else
+            sha=$RUN_SHA
+            action=deploy
+          fi
+          printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'
+          case "$action" in
+            deploy|rollback) ;;
+            *) echo "Acción no permitida." >&2; exit 2 ;;
+          esac
+          owner=$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "sha=${sha}"
+            echo "action=${action}"
+            echo "image=ghcr.io/${owner}/backend-cotas:${sha}"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+      - uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Actualizar el servidor
+        env:
+          IMAGE: ${{ steps.target.outputs.image }}
+          ENV_FILE: /opt/cotas/env/.env
+          STATE_DIR: /opt/cotas/state
+          BACKUP_DIR: /opt/cotas/backups
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+        run: bash backend/scripts/server-deploy.sh "${{ steps.target.outputs.action }}"

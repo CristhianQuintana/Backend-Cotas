@@ -1,0 +1,4 @@
+*.sh text eol=lf
+backend/Dockerfile text eol=lf
+backend/docker-compose.yml text eol=lf
+backend/docker/entrypoint.mjs text eol=lf
