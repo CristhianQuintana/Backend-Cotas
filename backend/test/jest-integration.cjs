@@ -1,0 +1,11 @@
+/** @type {import('jest').Config} */
+module.exports = {
+  moduleFileExtensions: ['js', 'json', 'ts'],
+  rootDir: '..',
+  testEnvironment: 'node',
+  testRegex: '.integration-spec.ts$',
+  transform: {
+    '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
+  },
+  testTimeout: 30000,
+};

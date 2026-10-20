@@ -1,0 +1,64 @@
+# API y PostgreSQL. El vídeo no pasa por estos contenedores.
+# En el servidor, defina POSTGRES_PASSWORD antes del primer arranque.
+# PUBLIC_CORS_ORIGINS debe ser https. El valor por defecto solo sirve para la prueba local del contenedor.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cotas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_only_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-cotas_dev}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5436}:5432"
+    volumes:
+      - cotas_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cotas} -d ${POSTGRES_DB:-cotas_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - cotas
+
+  backend:
+    build: .
+    image: cotas-backend:local
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SWAGGER_ENABLED: "false"
+      CORS_ORIGINS: ${PUBLIC_CORS_ORIGINS:-https://localhost}
+      POSTGRES_USER: ${POSTGRES_USER:-cotas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_only_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-cotas_dev}
+      POSTGRES_HOST: postgres
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-3100}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health/live').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - cotas
+
+networks:
+  cotas:
+
+volumes:
+  cotas_pg:

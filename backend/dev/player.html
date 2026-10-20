@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prueba local COTAS</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.13/dist/hls.min.js"></script>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", sans-serif;
+        background: #f4f6f8;
+        color: #1c2430;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+      }
+      main {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        min-height: 100vh;
+      }
+      aside,
+      section {
+        padding: 24px;
+      }
+      aside {
+        background: #fff;
+        border-right: 1px solid #d8dee6;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+      p {
+        margin: 0 0 16px;
+        color: #526070;
+      }
+      form,
+      .stack {
+        display: grid;
+        gap: 10px;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        font-size: 14px;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        padding: 8px 10px;
+        border: 1px solid #c5ced8;
+        border-radius: 6px;
+      }
+      button {
+        background: #0f6b4c;
+        color: #fff;
+        border: 0;
+        cursor: pointer;
+      }
+      button.secondary {
+        background: #e8edf2;
+        color: #1c2430;
+      }
+      ul {
+        list-style: none;
+        margin: 12px 0 0;
+        padding: 0;
+        max-height: 60vh;
+        overflow: auto;
+      }
+      li button {
+        width: 100%;
+        text-align: left;
+        background: #fff;
+        color: #1c2430;
+        border: 1px solid #d8dee6;
+        margin-bottom: 6px;
+      }
+      li button[aria-current='true'] {
+        border-color: #0f6b4c;
+        background: #e7f5ef;
+      }
+      video {
+        width: 100%;
+        max-height: 70vh;
+        background: #111;
+        border-radius: 8px;
+      }
+      #status {
+        min-height: 1.4em;
+        margin-top: 12px;
+      }
+      #sound {
+        width: auto;
+        margin-top: 12px;
+      }
+      #modes {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+      #modes button[aria-pressed='true'] {
+        background: #0f6b4c;
+        color: #fff;
+      }
+      #detail {
+        margin-bottom: 12px;
+        padding: 12px;
+        background: #fff;
+        border: 1px solid #d8dee6;
+        border-radius: 8px;
+      }
+      #detail h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      #detail p {
+        margin: 0 0 8px;
+      }
+      #episodes {
+        display: grid;
+        gap: 6px;
+        max-height: 28vh;
+        overflow: auto;
+      }
+      #episodes button {
+        text-align: left;
+        background: #fff;
+        color: #1c2430;
+        border: 1px solid #d8dee6;
+      }
+      .hidden {
+        display: none;
+      }
+      @media (max-width: 800px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <aside>
+        <h1>Prueba de contenidos</h1>
+        <p>Página local para el backend. Entra con el usuario y la contraseña de tu línea XUI. La API autoriza canales, películas y episodios.</p>
+        <form id="login-form">
+          <label>Usuario <input name="username" autocomplete="username" required /></label>
+          <label>Contraseña <input name="password" type="password" autocomplete="current-password" required /></label>
+          <button type="submit">Entrar</button>
+        </form>
+        <div id="catalog" class="hidden stack">
+          <button id="logout" class="secondary" type="button">Salir</button>
+          <div id="modes">
+            <button type="button" data-mode="live" aria-pressed="true">Canales</button>
+            <button type="button" data-mode="vod" aria-pressed="false">Películas</button>
+            <button type="button" data-mode="series" aria-pressed="false">Series</button>
+          </div>
+          <label>Buscar <input id="search" type="search" maxlength="80" /></label>
+          <label>Categoría <select id="category"></select></label>
+          <ul id="channels"></ul>
+        </div>
+      </aside>
+      <section>
+        <div id="detail" class="hidden"></div>
+        <video id="player" controls playsinline muted></video>
+        <button id="sound" class="secondary hidden" type="button">Activar audio</button>
+        <p id="status">Entra con tu línea XUI para ver los canales en vivo.</p>
+      </section>
+    </main>
+    <script>
+      const tokenKey = 'cotasTestAccessToken';
+      const loginForm = document.querySelector('#login-form');
+      const catalog = document.querySelector('#catalog');
+      const channels = document.querySelector('#channels');
+      const category = document.querySelector('#category');
+      const search = document.querySelector('#search');
+      const detail = document.querySelector('#detail');
+      const status = document.querySelector('#status');
+      const video = document.querySelector('#player');
+      const soundButton = document.querySelector('#sound');
+      let hlsPlayer = null;
+      let soundEnabled = false;
+      let previewId = null;
+      let playbackGeneration = 0;
+      let mode = 'live';
+      let searchTimer = 0;
+
+      function setStatus(message) {
+        status.textContent = message;
+      }
+
+      function showCatalog(visible) {
+        loginForm.classList.toggle('hidden', visible);
+        catalog.classList.toggle('hidden', !visible);
+      }
+
+      async function api(path, options) {
+        const headers = new Headers(options && options.headers);
+        const token = sessionStorage.getItem(tokenKey);
+        if (token) {
+          headers.set('Authorization', 'Bearer ' + token);
+        }
+        if (options && options.body) {
+          headers.set('Content-Type', 'application/json');
+        }
+        const response = await fetch(path, { method: options && options.method, headers, body: options && options.body });
+        if (response.status === 401 && token) {
+          sessionStorage.removeItem(tokenKey);
+          showCatalog(false);
+          stopPlayback();
+        }
+        const text = await response.text();
+        const body = text ? JSON.parse(text) : null;
+        if (!response.ok) {
+          throw new Error((body && body.message) || 'La API rechazó la solicitud.');
+        }
+        return body;
+      }
+
+      async function loadAll(path) {
+        const items = [];
+        let page = 1;
+        let total = 0;
+        do {
+          const data = await api(path + (path.includes('?') ? '&' : '?') + 'page=' + page + '&limit=50');
+          items.push(...data.items);
+          total = data.total;
+          page += 1;
+        } while (items.length < total && page < 20);
+        return items;
+      }
+
+      function catalogPaths() {
+        if (mode === 'vod') {
+          return { categories: '/api/v1/catalog/vod/categories', items: '/api/v1/catalog/vod/streams' };
+        }
+        if (mode === 'series') {
+          return { categories: '/api/v1/catalog/series/categories', items: '/api/v1/catalog/series' };
+        }
+        return { categories: '/api/v1/catalog/live/categories', items: '/api/v1/catalog/live/streams' };
+      }
+
+      function clearDetail() {
+        detail.classList.add('hidden');
+        detail.replaceChildren();
+      }
+
+      async function loadCategories() {
+        const items = await loadAll(catalogPaths().categories);
+        category.replaceChildren(new Option('Todas', ''));
+        for (const item of items) {
+          category.append(new Option(item.name, item.id));
+        }
+      }
+
+      async function loadChannels() {
+        const selected = category.value;
+        const params = new URLSearchParams();
+        if (selected) {
+          params.set('categoryId', selected);
+        }
+        const term = search.value.trim();
+        if (term) {
+          params.set('search', term);
+        }
+        const query = params.toString();
+        const items = await loadAll(catalogPaths().items + (query ? '?' + query : ''));
+        channels.replaceChildren();
+        const noun = mode === 'vod' ? 'películas' : mode === 'series' ? 'series' : 'canales';
+        if (items.length === 0) {
+          setStatus('No hay ' + noun + ' para esta búsqueda.');
+          return;
+        }
+        for (const item of items) {
+          const li = document.createElement('li');
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = item.name;
+          button.addEventListener('click', () => openItem(item, button));
+          li.append(button);
+          channels.append(li);
+        }
+        setStatus(items.length + ' ' + noun + ' disponibles.');
+      }
+
+      async function openItem(item, button) {
+        for (const current of channels.querySelectorAll('button')) {
+          current.removeAttribute('aria-current');
+        }
+        button.setAttribute('aria-current', 'true');
+        if (mode === 'live') {
+          clearDetail();
+          await selectChannel(item);
+          return;
+        }
+        if (mode === 'vod') {
+          await showMovie(item);
+          return;
+        }
+        await showSeries(item);
+      }
+
+      async function showMovie(item) {
+        setStatus('Cargando ' + item.name + '…');
+        const movie = await api('/api/v1/catalog/vod/streams/' + encodeURIComponent(item.id));
+        detail.classList.remove('hidden');
+        detail.replaceChildren();
+        const title = document.createElement('h2');
+        title.textContent = movie.name;
+        const plot = document.createElement('p');
+        plot.textContent = [movie.year, movie.duration, movie.genre, movie.plot].filter(Boolean).join(' · ');
+        const playButton = document.createElement('button');
+        playButton.type = 'button';
+        playButton.textContent = 'Reproducir';
+        playButton.addEventListener('click', () => {
+          playAuthorized({ contentType: 'vod', streamId: movie.id }, movie.name).catch((error) => {
+            setStatus(error instanceof Error ? error.message : 'No se pudo autorizar la película.');
+          });
+        });
+        detail.append(title, plot, playButton);
+        try {
+          await playAuthorized({ contentType: 'vod', streamId: movie.id }, movie.name);
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : 'No se pudo autorizar la película.');
+        }
+      }
+
+      async function showSeries(item) {
+        setStatus('Cargando ' + item.name + '…');
+        const series = await api('/api/v1/catalog/series/' + encodeURIComponent(item.id));
+        detail.classList.remove('hidden');
+        detail.replaceChildren();
+        const title = document.createElement('h2');
+        title.textContent = series.name;
+        const plot = document.createElement('p');
+        plot.textContent = [series.year, series.genre, series.plot].filter(Boolean).join(' · ');
+        const episodes = document.createElement('div');
+        episodes.id = 'episodes';
+        if (!series.episodes || series.episodes.length === 0) {
+          const empty = document.createElement('p');
+          empty.textContent = 'Esta serie no tiene episodios.';
+          episodes.append(empty);
+        }
+        for (const season of series.seasons || []) {
+          const heading = document.createElement('p');
+          heading.textContent = season.name + ' (' + season.episodeCount + ')';
+          episodes.append(heading);
+          const seasonEpisodes = (series.episodes || []).filter((episode) => episode.seasonNumber === season.number);
+          if (seasonEpisodes.length === 0) {
+            const empty = document.createElement('p');
+            empty.textContent = 'Sin episodios.';
+            episodes.append(empty);
+          }
+          for (const episode of seasonEpisodes) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = (episode.episodeNumber ? episode.episodeNumber + '. ' : '') + episode.name;
+            button.addEventListener('click', () => {
+              playAuthorized(
+                {
+                  contentType: 'series',
+                  streamId: episode.id,
+                  seriesId: series.id,
+                  seasonNumber: season.number,
+                },
+                series.name + ' — ' + episode.name,
+              ).catch((error) => {
+                setStatus(error instanceof Error ? error.message : 'No se pudo autorizar el episodio.');
+              });
+            });
+            episodes.append(button);
+          }
+        }
+        detail.append(title, plot, episodes);
+        setStatus(series.name);
+      }
+
+      function stopPlayback() {
+        playbackGeneration += 1;
+        const currentPreview = previewId;
+        previewId = null;
+        if (currentPreview) {
+          fetch('/dev/preview/' + currentPreview, { method: 'DELETE' }).catch(() => undefined);
+        }
+        if (hlsPlayer) {
+          hlsPlayer.destroy();
+          hlsPlayer = null;
+        }
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        soundButton.classList.add('hidden');
+      }
+
+      async function selectChannel(item) {
+        setStatus('Autorizando ' + item.name + '…');
+        stopPlayback();
+        try {
+          await playAuthorized({ contentType: 'live', streamId: item.id }, item.name);
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : 'No se pudo autorizar el canal.');
+        }
+      }
+
+      async function playAuthorized(body, name) {
+        setStatus('Autorizando ' + name + '…');
+        stopPlayback();
+        const reference = await api('/api/v1/playback/authorizations', {
+          method: 'POST',
+          body: JSON.stringify(body),
+        });
+        setStatus('Preparando ' + name + '…');
+        await play(reference.streamUrl, name);
+      }
+
+      async function play(url, name) {
+        const generation = playbackGeneration;
+        let preview;
+        try {
+          preview = await api('/dev/preview', {
+            method: 'POST',
+            body: JSON.stringify({ streamUrl: url }),
+          });
+        } catch (error) {
+          if (generation === playbackGeneration) {
+            setStatus(error instanceof Error ? error.message : 'La API autorizó el canal, pero el reproductor no pudo abrir el video.');
+          }
+          return;
+        }
+        if (generation !== playbackGeneration || !preview || !preview.url) {
+          if (preview && preview.id) {
+            fetch('/dev/preview/' + preview.id, { method: 'DELETE' }).catch(() => undefined);
+          }
+          return;
+        }
+        previewId = preview.id;
+        if (!window.Hls || !window.Hls.isSupported()) {
+          setStatus('La API autorizó el canal. Este navegador no reproduce HLS.');
+          return;
+        }
+        let retries = 0;
+        hlsPlayer = new window.Hls({ enableWorker: true, lowLatencyMode: false });
+        hlsPlayer.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          video.volume = 1;
+          video.muted = !soundEnabled;
+          const attempt = video.play();
+          if (attempt) {
+            attempt.catch(() => {
+              video.muted = true;
+              video.play().catch(() => undefined);
+            });
+          }
+        });
+        let announced = false;
+        const showPlaying = () => {
+          if (announced || generation !== playbackGeneration || video.videoWidth === 0) {
+            return;
+          }
+          announced = true;
+          soundButton.classList.toggle('hidden', !video.muted);
+          const picture = video.videoWidth + '×' + video.videoHeight;
+          setStatus(
+            video.muted
+              ? name + ' en reproducción (' + picture + '). Pulsa «Activar audio» para escuchar.'
+              : name + ' en reproducción (' + picture + ').',
+          );
+        };
+        video.onplaying = showPlaying;
+        video.ontimeupdate = showPlaying;
+        hlsPlayer.on(window.Hls.Events.ERROR, (_event, data) => {
+          if (!data.fatal || generation !== playbackGeneration) {
+            return;
+          }
+          if (data.type === window.Hls.ErrorTypes.NETWORK_ERROR && retries < 2) {
+            retries += 1;
+            hlsPlayer.startLoad();
+            return;
+          }
+          if (data.type === window.Hls.ErrorTypes.MEDIA_ERROR && retries < 2) {
+            retries += 1;
+            hlsPlayer.recoverMediaError();
+            return;
+          }
+          if (video.videoWidth > 0) {
+            return;
+          }
+          setStatus('La API autorizó el canal, pero el reproductor no pudo abrir el video.');
+        });
+        hlsPlayer.loadSource(preview.url);
+        hlsPlayer.attachMedia(video);
+        window.setTimeout(() => {
+          if (generation !== playbackGeneration || video.videoWidth > 0) {
+            return;
+          }
+          setStatus('La API autorizó el canal, pero el reproductor no pudo abrir el video.');
+        }, 40000);
+      }
+
+      soundButton.addEventListener('click', () => {
+        soundEnabled = true;
+        video.muted = false;
+        video.volume = 1;
+        video.play().catch(() => undefined);
+        soundButton.classList.add('hidden');
+        const current = status.textContent || '';
+        const marker = current.indexOf('. Pulsa');
+        if (marker > 0) {
+          setStatus(current.slice(0, marker) + '.');
+        }
+      });
+
+      loginForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(loginForm);
+        setStatus('Comprobando la cuenta…');
+        try {
+          const result = await api('/api/v1/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({
+              username: String(data.get('username') || ''),
+              password: String(data.get('password') || ''),
+            }),
+          });
+          if (result.type !== 'authenticated' || !result.accessToken) {
+            setStatus('Esta cuenta requiere otro paso antes de ver canales.');
+            return;
+          }
+          sessionStorage.setItem(tokenKey, result.accessToken);
+          loginForm.reset();
+          showCatalog(true);
+          await loadCategories();
+          await loadChannels();
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : 'No se pudo entrar.');
+        }
+      });
+
+      category.addEventListener('change', () => {
+        loadChannels().catch((error) => setStatus(error.message));
+      });
+
+      search.addEventListener('input', () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(() => {
+          loadChannels().catch((error) => setStatus(error.message));
+        }, 300);
+      });
+
+      for (const button of document.querySelectorAll('#modes button')) {
+        button.addEventListener('click', () => {
+          mode = button.dataset.mode;
+          for (const current of document.querySelectorAll('#modes button')) {
+            current.setAttribute('aria-pressed', String(current === button));
+          }
+          search.value = '';
+          clearDetail();
+          stopPlayback();
+          loadCategories()
+            .then(loadChannels)
+            .catch((error) => setStatus(error.message));
+        });
+      }
+
+      document.querySelector('#logout').addEventListener('click', async () => {
+        const token = sessionStorage.getItem(tokenKey);
+        sessionStorage.removeItem(tokenKey);
+        stopPlayback();
+        clearDetail();
+        showCatalog(false);
+        setStatus('Sesión cerrada en esta página.');
+        if (!token) {
+          return;
+        }
+        await fetch('/api/v1/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token },
+        }).catch(() => undefined);
+      });
+
+      if (sessionStorage.getItem(tokenKey)) {
+        showCatalog(true);
+        loadCategories()
+          .then(loadChannels)
+          .catch(() => {
+            sessionStorage.removeItem(tokenKey);
+            showCatalog(false);
+            setStatus('La sesión guardada ya no es válida.');
+          });
+      }
+    </script>
+  </body>
+</html>
