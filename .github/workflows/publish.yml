@@ -74,13 +74,16 @@ jobs:
           IMAGE: ${{ steps.meta.outputs.image }}
         run: |
           set -eu
+          docker pull "$IMAGE"
           user=$(docker image inspect "$IMAGE" --format '{{.Config.User}}')
           test "$user" = "cotas"
-          docker run -d --name cotas-publish-check --network host \
+          docker run -d --name cotas-publish-check \
+            --add-host=host.docker.internal:host-gateway \
+            -p 127.0.0.1:3000:3000 \
             -e NODE_ENV=production \
             -e PORT=3000 \
             -e RUN_MIGRATIONS=true \
-            -e POSTGRES_HOST=127.0.0.1 \
+            -e POSTGRES_HOST=host.docker.internal \
             -e POSTGRES_USER=cotas \
             -e POSTGRES_PASSWORD=local_only_dev_password \
             -e POSTGRES_DB=cotas_dev \
