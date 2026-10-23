@@ -26,25 +26,26 @@ Personal sin MFA enrolado recibe `type: "mfa_enrollment_required"` y debe comple
 
 Las respuestas públicas nunca incluyen `passwordHash` ni secretos MFA.
 
-## Seed del operador
+## Seed del personal local
 
-En el servidor (o local), con migraciones aplicadas:
+En el servidor (o local), con migraciones aplicadas. El seed **crea** usuarios; si el nombre ya existe, no modifica hash ni roles.
 
 ```text
 SEED_ALLOW_PRODUCTION=true
-SEED_OPERATOR_USERNAME=operador
-SEED_OPERATOR_PASSWORD=<contraseña de 12+ caracteres>
-SEED_ADMIN_USERNAME=admin.local   # opcional
-SEED_ADMIN_PASSWORD=<contraseña>
+SEED_ADMIN_USERNAME=operador
+SEED_ADMIN_PASSWORD=<contraseña de 12+ caracteres>
+# Opcional: OPERATOR adicional
+# SEED_OPERATOR_USERNAME=...
+# SEED_OPERATOR_PASSWORD=...
 npm run seed
 ```
 
-No versionar esas contraseñas. Tras el seed, el primer login de `operador` pedirá enrolar MFA.
+En el servidor de pruebas también puede usarse el workflow `bootstrap-admin` (entorno `pruebas`, secreto `BOOTSTRAP_ADMIN_PASSWORD`). No versionar esas contraseñas. La política exige mínimo 12 caracteres; no se aceptan valores cortos como `0p3r4d0r`. Tras el seed, el primer login pedirá enrolar MFA.
 
 ## Despliegue
 
 1. Copia de seguridad de PostgreSQL.
 2. Publicar imagen / `docker compose up -d --no-build`.
 3. Migraciones: el entrypoint ejecuta `prisma migrate deploy` si `RUN_MIGRATIONS` ≠ `false`.
-4. Ejecutar seed una vez con las variables anteriores.
-5. Comprobar `GET /api/v1/health/live` y login local.
+4. Ejecutar seed una vez (o `bootstrap-admin`) con las variables anteriores.
+5. Comprobar `GET /api/v1/health/live` y login local hasta `mfa_enrollment_required`.

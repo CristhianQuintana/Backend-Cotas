@@ -1,0 +1,111 @@
+name: bootstrap-admin
+
+# Crea el primer ADMIN local en el servidor de pruebas. No imprime contraseñas.
+# Requiere el secreto de entorno BOOTSTRAP_ADMIN_PASSWORD (12+ caracteres) en `pruebas`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: Nombre de usuario administrativo a crear si no existe.
+        required: true
+        type: string
+        default: operador
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-admin-pruebas
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Generar cliente Prisma
+        run: npx prisma generate
+      - name: Crear ADMIN local si no existe
+        env:
+          SEED_ALLOW_PRODUCTION: "true"
+          SEED_ADMIN_USERNAME: ${{ inputs.username }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+        run: |
+          set -eu
+          printf '%s' "$SEED_ADMIN_USERNAME" | grep -Eq '^[A-Za-z0-9._-]{3,64}$'
+          if [ -z "${SEED_ADMIN_PASSWORD:-}" ]; then
+            echo "Falta el secreto BOOTSTRAP_ADMIN_PASSWORD en el entorno pruebas." >&2
+            exit 2
+          fi
+          if [ "${#SEED_ADMIN_PASSWORD}" -lt 12 ]; then
+            echo "BOOTSTRAP_ADMIN_PASSWORD no cumple el mínimo de 12 caracteres." >&2
+            exit 2
+          fi
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "No existe el entorno del servidor." >&2
+            exit 2
+          fi
+          db_user=$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          db_pass=$(grep -E '^POSTGRES_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          db_name=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          db_user=${db_user:-cotas}
+          db_name=${db_name:-cotas_dev}
+          if [ -z "$db_pass" ]; then
+            echo "POSTGRES_PASSWORD ausente en el entorno del servidor." >&2
+            exit 2
+          fi
+          export DATABASE_URL="postgresql://${db_user}:${db_pass}@127.0.0.1:5436/${db_name}"
+          export NODE_ENV=production
+          ln -sfn "$ENV_FILE" .env
+          npm run seed
+      - name: Comprobar fila en PostgreSQL
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+          CHECK_USERNAME: ${{ inputs.username }}
+        run: |
+          set -eu
+          printf '%s' "$CHECK_USERNAME" | grep -Eq '^[A-Za-z0-9._-]{3,64}$'
+          cd "$COMPOSE_DIR"
+          ln -sfn "$ENV_FILE" .env
+          db_user=$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          db_name=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          db_user=${db_user:-cotas}
+          db_name=${db_name:-cotas_dev}
+          docker compose exec -T postgres \
+            psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 \
+            -v uname="$CHECK_USERNAME" \
+            -c "SELECT u.username, u.status, r.code AS role, (u.password_hash IS NOT NULL) AS has_password_hash FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id WHERE u.username = :'uname' AND u.deleted_at IS NULL;"
+      - name: Probar login local (enrolamiento MFA)
+        env:
+          SEED_ADMIN_USERNAME: ${{ inputs.username }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+          ENV_FILE: /opt/cotas/env/.env
+        run: |
+          set -eu
+          api_port=$(grep -E '^BACKEND_PORT=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          api_port=${api_port:-3100}
+          response_file=$(mktemp)
+          body_file=$(mktemp)
+          trap 'rm -f "$response_file" "$body_file"' EXIT
+          BODY_FILE="$body_file" python3 -c 'import json,os; json.dump({"username":os.environ["SEED_ADMIN_USERNAME"],"password":os.environ["SEED_ADMIN_PASSWORD"]}, open(os.environ["BODY_FILE"],"w"), separators=(",",":"))'
+          curl -sS -X POST "http://127.0.0.1:${api_port}/api/v1/auth/login" \
+            -H 'content-type: application/json' \
+            --data-binary @"$body_file" >"$response_file"
+          grep -q '"type":"mfa_enrollment_required"' "$response_file"
+          grep -q '"enrollmentToken"' "$response_file"
+          echo "Login local OK: MFA obligatorio pendiente de enrolar."

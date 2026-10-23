@@ -61,6 +61,20 @@ async function ensureLocalStaff(
   if (!role) {
     throw new Error(`Falta el rol ${input.roleCode}.`);
   }
+
+  const existing = await prisma.user.findFirst({
+    where: { username: input.username, deletedAt: null },
+    include: { userRoles: { include: { role: true } } },
+  });
+  if (existing) {
+    const roles = existing.userRoles.map((link) => link.role.code).join(',');
+    const hasHash = Boolean(existing.passwordHash);
+    console.log(
+      `Usuario ${input.username} ya existe (id=${existing.id}, status=${existing.status}, roles=${roles || 'ninguno'}, passwordHash=${hasHash ? 'si' : 'no'}); no se crea ni se modifica.`,
+    );
+    return;
+  }
+
   const memoryCost = Number(process.env.ARGON2_MEMORY_COST ?? '19456');
   const timeCost = Number(process.env.ARGON2_TIME_COST ?? '2');
   const parallelism = Number(process.env.ARGON2_PARALLELISM ?? '1');
@@ -70,36 +84,21 @@ async function ensureLocalStaff(
     timeCost,
     parallelism,
   });
-  const existing = await prisma.user.findFirst({
-    where: { username: input.username, deletedAt: null },
-  });
-  const userId = existing?.id ?? newId();
+  const userId = newId();
   const now = new Date();
-  if (!existing) {
-    await prisma.user.create({
-      data: {
-        id: userId,
-        username: input.username,
-        passwordHash,
-        passwordChangedAt: now,
-        status: 'ACTIVE',
+  await prisma.user.create({
+    data: {
+      id: userId,
+      username: input.username,
+      passwordHash,
+      passwordChangedAt: now,
+      status: 'ACTIVE',
+      userRoles: {
+        create: { roleId: role.id },
       },
-    });
-  } else {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        passwordHash,
-        passwordChangedAt: now,
-        status: 'ACTIVE',
-      },
-    });
-  }
-  await prisma.userRoleLink.deleteMany({ where: { userId } });
-  await prisma.userRoleLink.create({
-    data: { userId, roleId: role.id },
+    },
   });
-  console.log(`Usuario local ${input.roleCode} listo: ${input.username}`);
+  console.log(`Usuario local ${input.roleCode} creado: ${input.username}`);
 }
 
 main().catch((error: unknown) => {
