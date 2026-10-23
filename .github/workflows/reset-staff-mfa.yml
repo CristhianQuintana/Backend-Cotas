@@ -1,0 +1,44 @@
+name: reset-staff-mfa
+
+# Revoca el MFA TOTP de un usuario staff para forzar re-enrolamiento.
+# No imprime secretos ni hashes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: Usuario staff cuyo MFA se revoca.
+        required: true
+        type: string
+        default: operador
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reset-staff-mfa-pruebas
+  cancel-in-progress: false
+
+jobs:
+  reset:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Revocar MFA TOTP
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+          CHECK_USERNAME: ${{ inputs.username }}
+        run: |
+          set -eu
+          printf '%s' "$CHECK_USERNAME" | grep -Eq '^[A-Za-z0-9._-]{3,64}$'
+          cd "$COMPOSE_DIR"
+          ln -sfn "$ENV_FILE" .env
+          db_user=$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          db_name=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          db_user=${db_user:-cotas}
+          db_name=${db_name:-cotas_dev}
+          docker compose exec -T postgres \
+            psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 \
+            -c "UPDATE user_mfa_methods m SET status = 'REVOKED', revoked_at = NOW() FROM users u WHERE m.user_id = u.id AND u.username = '${CHECK_USERNAME}' AND u.deleted_at IS NULL AND m.status IN ('ACTIVE','PENDING'); SELECT u.username, m.method, m.status FROM users u LEFT JOIN user_mfa_methods m ON m.user_id = u.id WHERE u.username = '${CHECK_USERNAME}' AND u.deleted_at IS NULL ORDER BY m.created_at DESC NULLS LAST LIMIT 5;"
