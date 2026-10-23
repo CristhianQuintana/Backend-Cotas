@@ -11,6 +11,8 @@ sudo install -d -o cotas-runner -g cotas-runner -m 750 /opt/cotas
 sudo install -d -o cotas-runner -g cotas-runner -m 700 /opt/cotas/env /opt/cotas/state /opt/cotas/backups /opt/cotas/actions-runner
 ```
 
+El archivo `.env` va solo en `/opt/cotas/env/.env` (modo `600`, dueño `cotas-runner`). No cree `/opt/cotas/backups/env`: ahí solo deben quedar `cotas-*.dump`. Si ya existiera esa carpeta por error, no la abra en un informe; ajústela al mismo dueño o quítela si está vacía.
+
 El grupo `docker` permite controlar el motor. No dé este usuario a otras personas y no ejecute con él tareas ajenas al despliegue.
 
 ## Registro

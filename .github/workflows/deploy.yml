@@ -72,6 +72,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Comprobar que la imagen existe en GHCR
+        env:
+          IMAGE: ${{ steps.target.outputs.image }}
+        run: |
+          set -eu
+          if ! docker manifest inspect "$IMAGE" >/dev/null; then
+            echo "La imagen no está en GHCR o este token no puede leerla: ${IMAGE}" >&2
+            echo "Espere a que publish termine en verde para este SHA antes de lanzar deploy a mano." >&2
+            exit 1
+          fi
+          echo "Imagen localizable en GHCR para este SHA."
       - name: Actualizar el servidor
         env:
           IMAGE: ${{ steps.target.outputs.image }}

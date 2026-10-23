@@ -61,9 +61,15 @@ if docker compose ps --format '{{.Service}} {{.Status}}' | grep -q '^postgres Up
   docker compose exec -T postgres pg_dump -U "$db_user" --format=custom --file=/tmp/cotas.dump "$db_name"
   docker compose cp "postgres:/tmp/cotas.dump" "$backup_dir/cotas-${stamp}.dump"
   docker compose exec -T postgres rm -f /tmp/cotas.dump
-  find "$backup_dir" -type f -name 'cotas-*.dump' -printf '%T@ %p\n' | sort -nr | awk 'NR>7 { print $2 }' | while read -r old; do
+  # Solo el directorio raíz de copias: no descender a subcarpetas (p. ej. restos
+  # ajenos bajo backups/) que el runner no debe leer.
+  while IFS= read -r old; do
     rm -f "$old"
-  done
+  done < <(
+    find "$backup_dir" -mindepth 1 -maxdepth 1 -type f -name 'cotas-*.dump' -printf '%T@ %p\n' \
+      | sort -nr \
+      | awk 'NR>7 { print $2 }'
+  )
   echo "Copia previa guardada. No se imprime su ruta completa en el resumen remoto."
 else
   echo "PostgreSQL no estaba en marcha. No hay copia previa que tomar."
@@ -73,9 +79,11 @@ if [ -f "$state_dir/current-image" ]; then
   cp "$state_dir/current-image" "$state_dir/previous-image"
 fi
 
-docker pull "$image"
+if ! docker pull "$image"; then
+  echo "No se pudo descargar la imagen. Compruebe que publish terminó en verde para este SHA y que el paquete GHCR está ligado al repositorio con lectura para Actions." >&2
+  exit 1
+fi
 docker tag "$image" cotas-backend:local
-
 if [ "$mode" = "rollback" ]; then
   export RUN_MIGRATIONS=false
   echo "Reversión de la imagen. No se aplican migraciones y no se restaura la base."
