@@ -63,8 +63,9 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     ['debug', 'info', 'warn', 'error'],
     'LOG_LEVEL',
   ) as LogLevel;
+  const corsAllowInsecureHttp = raw.CORS_ALLOW_INSECURE_HTTP === 'true';
   const corsOrigins = splitList(required(raw.CORS_ORIGINS, 'CORS_ORIGINS')).map((origin) =>
-    parseCorsOrigin(origin, nodeEnv),
+    parseCorsOrigin(origin, nodeEnv, corsAllowInsecureHttp),
   );
   const trustProxy = bool(raw.TRUST_PROXY ?? 'false', 'TRUST_PROXY');
   const swaggerEnabled =
@@ -229,7 +230,7 @@ function parseXuiBaseUrl(value: string, nodeEnv: NodeEnv, allowInsecureHttp: boo
   return url;
 }
 
-function parseCorsOrigin(value: string, nodeEnv: NodeEnv): string {
+function parseCorsOrigin(value: string, nodeEnv: NodeEnv, allowInsecureHttp: boolean): string {
   if (value === '*') {
     fail('CORS_ORIGINS');
   }
@@ -242,10 +243,10 @@ function parseCorsOrigin(value: string, nodeEnv: NodeEnv): string {
   if (url.username || url.password) {
     fail('CORS_ORIGINS');
   }
-  if (nodeEnv === 'production' && url.protocol !== 'https:') {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     fail('CORS_ORIGINS');
   }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+  if (nodeEnv === 'production' && url.protocol === 'http:' && !allowInsecureHttp) {
     fail('CORS_ORIGINS');
   }
   return url.origin;

@@ -1,0 +1,50 @@
+# Autenticación local del panel administrativo
+
+Desde la migración `20261023180000_local_staff_auth`, el personal (`ADMIN` / `OPERATOR`) inicia sesión con usuario y contraseña almacenados en PostgreSQL (Argon2id). **No** usa XUI.
+
+Los clientes IPTV (`CUSTOMER`) siguen autenticándose con la línea XUI.
+
+## Login
+
+`POST /api/v1/auth/login` con `{ "username", "password" }` y, si MFA ya está activo, `totpCode` o `recoveryCode`.
+
+1. Si el usuario tiene `password_hash` → verificación local.
+2. Si es `ADMIN`/`OPERATOR` sin hash → rechazo genérico (hay que seed/reset).
+3. En caso contrario → flujo XUI de cliente.
+
+Personal sin MFA enrolado recibe `type: "mfa_enrollment_required"` y debe completar `/auth/mfa/setup` y `/auth/mfa/confirm`.
+
+## Gestión de usuarios (solo `ADMIN`)
+
+| Método | Ruta |
+| --- | --- |
+| `GET` | `/api/v1/admin/users` |
+| `GET` | `/api/v1/admin/users/:id` |
+| `POST` | `/api/v1/admin/users` |
+| `PATCH` | `/api/v1/admin/users/:id` |
+| `POST` | `/api/v1/admin/users/:id/password` |
+
+Las respuestas públicas nunca incluyen `passwordHash` ni secretos MFA.
+
+## Seed del operador
+
+En el servidor (o local), con migraciones aplicadas:
+
+```text
+SEED_ALLOW_PRODUCTION=true
+SEED_OPERATOR_USERNAME=operador
+SEED_OPERATOR_PASSWORD=<contraseña de 12+ caracteres>
+SEED_ADMIN_USERNAME=admin.local   # opcional
+SEED_ADMIN_PASSWORD=<contraseña>
+npm run seed
+```
+
+No versionar esas contraseñas. Tras el seed, el primer login de `operador` pedirá enrolar MFA.
+
+## Despliegue
+
+1. Copia de seguridad de PostgreSQL.
+2. Publicar imagen / `docker compose up -d --no-build`.
+3. Migraciones: el entrypoint ejecuta `prisma migrate deploy` si `RUN_MIGRATIONS` ≠ `false`.
+4. Ejecutar seed una vez con las variables anteriores.
+5. Comprobar `GET /api/v1/health/live` y login local.

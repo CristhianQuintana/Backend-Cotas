@@ -9,15 +9,18 @@ import type {
 import type {
   AcceptLineInput,
   AcceptLineResult,
+  CreateLocalUserInput,
   LineAccess,
   LineCredentials,
   RecoveryCodeRepository,
   SessionRepository,
+  UpdateLocalUserInput,
   UserRepository,
 } from '../../src/modules/identity/domain/ports/identity.ports';
 import type { AuditRepository } from '../../src/modules/audit/domain/audit-repository';
 import { DomainError, ErrorCodes, PublicMessages } from '../../src/common/exceptions/domain-error';
 import { newId } from '../../src/common/utils/ids';
+import { isStaffRole } from '../../src/modules/identity/domain/models/authenticated-user';
 
 export class InMemoryIdentity
   implements UserRepository, SessionRepository, RecoveryCodeRepository, AuditRepository, LineAccess
@@ -36,6 +39,61 @@ export class InMemoryIdentity
     return this.users.find((user) => user.id === id) ?? null;
   }
 
+  async listUsers(page: number, limit: number): Promise<{ total: number; items: UserRecord[] }> {
+    const start = (page - 1) * limit;
+    return {
+      total: this.users.length,
+      items: this.users.slice(start, start + limit),
+    };
+  }
+
+  async createLocalUser(input: CreateLocalUserInput): Promise<UserRecord> {
+    if (this.users.some((user) => user.username === input.username)) {
+      throw new DomainError(ErrorCodes.conflict, 409, PublicMessages.conflict);
+    }
+    return addUser(this, {
+      username: input.username,
+      role: input.role,
+      roles: [input.role],
+      status: input.status,
+      passwordHash: input.passwordHash,
+      mfaEnabled: false,
+      mfaSecretCiphertext: null,
+      lastLoginAt: null,
+      createdAt: input.now,
+    });
+  }
+
+  async updateLocalUser(input: UpdateLocalUserInput): Promise<UserRecord> {
+    const user = await this.findById(input.id);
+    if (!user) {
+      throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+    }
+    if (input.status) {
+      user.status = input.status;
+    }
+    if (input.role) {
+      user.role = input.role;
+      user.roles = [input.role];
+    }
+    return user;
+  }
+
+  async setPasswordHash(id: string, passwordHash: string, _now: Date): Promise<void> {
+    const user = await this.findById(id);
+    if (!user) {
+      throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+    }
+    user.passwordHash = passwordHash;
+  }
+
+  async touchLastLogin(id: string, now: Date): Promise<void> {
+    const user = await this.findById(id);
+    if (user) {
+      user.lastLoginAt = now;
+    }
+  }
+
   async saveMfaSecret(id: string, secretCiphertext: string): Promise<void> {
     const user = await this.findById(id);
     if (!user || user.mfaEnabled) {
@@ -50,6 +108,9 @@ export class InMemoryIdentity
     if (existing && existing.status !== 'ACTIVE') {
       return { ok: false, reason: 'blocked' };
     }
+    if (existing && (isStaffRole(existing.role) || existing.passwordHash)) {
+      return { ok: false, reason: 'blocked' };
+    }
     const user =
       existing ??
       addUser(this, {
@@ -57,6 +118,7 @@ export class InMemoryIdentity
         role: 'CUSTOMER',
         roles: ['CUSTOMER'],
         status: 'ACTIVE',
+        passwordHash: null,
         mfaEnabled: false,
         mfaSecretCiphertext: null,
       });
@@ -231,7 +293,13 @@ export class InMemoryIdentity
 
 export function addUser(
   store: InMemoryIdentity,
-  user: Omit<UserRecord, 'id' | 'roles'> & { id?: string; roles?: UserRecord['roles'] },
+  user: Omit<UserRecord, 'id' | 'roles' | 'passwordHash' | 'lastLoginAt' | 'createdAt'> & {
+    id?: string;
+    roles?: UserRecord['roles'];
+    passwordHash?: string | null;
+    lastLoginAt?: Date | null;
+    createdAt?: Date;
+  },
 ): UserRecord {
   const record: UserRecord = {
     id: user.id ?? newId(),
@@ -239,8 +307,11 @@ export function addUser(
     role: user.role,
     roles: user.roles ?? [user.role],
     status: user.status,
+    passwordHash: user.passwordHash ?? null,
     mfaEnabled: user.mfaEnabled,
     mfaSecretCiphertext: user.mfaSecretCiphertext,
+    lastLoginAt: user.lastLoginAt ?? null,
+    createdAt: user.createdAt ?? new Date('2026-10-19T15:00:00.000Z'),
   };
   store.users.push(record);
   return record;

@@ -19,8 +19,10 @@ import { AccessTokenGuard } from './modules/identity/presentation/guards/access-
 import { RolesGuard } from './modules/identity/presentation/guards/roles.guard';
 import { IdentityController } from './modules/identity/presentation/http/identity.controller';
 import { SessionsController } from './modules/identity/presentation/http/sessions.controller';
+import { AdminUsersController } from './modules/identity/presentation/http/admin-users.controller';
 import { LoginUseCase } from './modules/identity/application/use-cases/login.use-case';
 import { RefreshSessionUseCase } from './modules/identity/application/use-cases/refresh-session.use-case';
+import { AdminUsersUseCase } from './modules/identity/application/use-cases/admin-users.use-case';
 import {
   GetProfileUseCase,
   ListSessionsUseCase,
@@ -66,6 +68,7 @@ import { AuthorizePlaybackUseCase } from './modules/playback/application/authori
     HealthController,
     IdentityController,
     SessionsController,
+    AdminUsersController,
     CatalogController,
     PlaybackController,
     AuditController,
@@ -109,6 +112,7 @@ import { AuthorizePlaybackUseCase } from './modules/playback/application/authori
     RevokeSessionUseCase,
     BeginMfaEnrollmentUseCase,
     ConfirmMfaEnrollmentUseCase,
+    AdminUsersUseCase,
     CatalogUseCase,
     AuthorizePlaybackUseCase,
     ListAuditUseCase,

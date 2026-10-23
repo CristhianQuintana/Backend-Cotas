@@ -1,5 +1,5 @@
 import type { AuditDraft } from '../../../audit/domain/audit-draft';
-import type { UserRecord } from '../models/authenticated-user';
+import type { UserRecord, UserRole, UserStatus } from '../models/authenticated-user';
 import type { RevocationReason, RotateResult, SessionRecord } from '../models/session';
 
 export const USER_REPOSITORY = Symbol('USER_REPOSITORY');
@@ -11,9 +11,29 @@ export const TOKEN_SERVICE = Symbol('TOKEN_SERVICE');
 export const MFA_SERVICE = Symbol('MFA_SERVICE');
 export const MFA_CIPHER = Symbol('MFA_CIPHER');
 
+export interface CreateLocalUserInput {
+  username: string;
+  passwordHash: string;
+  role: UserRole;
+  status: UserStatus;
+  now: Date;
+}
+
+export interface UpdateLocalUserInput {
+  id: string;
+  status?: UserStatus;
+  role?: UserRole;
+  now: Date;
+}
+
 export interface UserRepository {
   findByUsername(username: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
+  listUsers(page: number, limit: number): Promise<{ total: number; items: UserRecord[] }>;
+  createLocalUser(input: CreateLocalUserInput): Promise<UserRecord>;
+  updateLocalUser(input: UpdateLocalUserInput): Promise<UserRecord>;
+  setPasswordHash(id: string, passwordHash: string, now: Date): Promise<void>;
+  touchLastLogin(id: string, now: Date): Promise<void>;
   saveMfaSecret(id: string, secretCiphertext: string): Promise<void>;
   enableMfa(id: string): Promise<void>;
 }

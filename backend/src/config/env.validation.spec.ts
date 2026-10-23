@@ -65,4 +65,18 @@ describe('validateEnv', () => {
     env.CORS_ORIGINS = '*';
     expect(() => validateEnv(env)).toThrow('CORS_ORIGINS');
   });
+
+  it('permite orígenes http en production solo con CORS_ALLOW_INSECURE_HTTP', () => {
+    const denied = valid();
+    denied.NODE_ENV = 'production';
+    denied.XUI_BASE_URL = 'https://xui.local';
+    denied.CORS_ORIGINS = 'http://127.0.0.1:5500';
+    denied.ARGON2_MEMORY_COST = '19456';
+    denied.ARGON2_TIME_COST = '2';
+    denied.ACCESS_TOKEN_TTL_SECONDS = '900';
+    expect(() => validateEnv(denied)).toThrow('CORS_ORIGINS');
+
+    const allowed = { ...denied, CORS_ALLOW_INSECURE_HTTP: 'true' };
+    expect(validateEnv(allowed).corsOrigins).toEqual(['http://127.0.0.1:5500']);
+  });
 });

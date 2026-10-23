@@ -54,6 +54,8 @@ export class GetProfileUseCase {
       id: record.id,
       username: record.username,
       role: record.role,
+      roles: record.roles,
+      status: record.status,
       mfaEnabled: record.mfaEnabled,
     };
   }

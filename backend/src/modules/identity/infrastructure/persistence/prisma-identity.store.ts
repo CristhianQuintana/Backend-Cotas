@@ -12,9 +12,11 @@ import { rethrowAsDomain } from '../../../../infrastructure/database/prisma-erro
 import { auditCreateData } from '../../../audit/infrastructure/audit-record';
 import type { AuditDraft } from '../../../audit/domain/audit-draft';
 import {
+  isStaffRole,
   isUserRole,
   primaryRole,
   type UserRecord,
+  type UserRole,
   type UserStatus,
 } from '../../domain/models/authenticated-user';
 import type { RevocationReason, RotateResult, SessionRecord } from '../../domain/models/session';
@@ -22,11 +24,13 @@ import {
   MFA_CIPHER,
   type AcceptLineInput,
   type AcceptLineResult,
+  type CreateLocalUserInput,
   type LineAccess,
   type LineCredentials,
   type MfaSecretCipher,
   type RecoveryCodeRepository,
   type SessionRepository,
+  type UpdateLocalUserInput,
   type UserRepository,
 } from '../../domain/ports/identity.ports';
 
@@ -67,6 +71,114 @@ export class PrismaIdentityStore
         include: userGraph,
       });
       return user ? toUser(user) : null;
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async listUsers(page: number, limit: number): Promise<{ total: number; items: UserRecord[] }> {
+    try {
+      const where = { deletedAt: null };
+      const [total, rows] = await this.prisma.$transaction([
+        this.prisma.user.count({ where }),
+        this.prisma.user.findMany({
+          where,
+          include: userGraph,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+      ]);
+      return { total, items: rows.map(toUser) };
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async createLocalUser(input: CreateLocalUserInput): Promise<UserRecord> {
+    try {
+      const role = await this.prisma.role.findUnique({ where: { code: input.role } });
+      if (!role) {
+        throw new DomainError(ErrorCodes.internal, 500, PublicMessages.internal);
+      }
+      const id = newId();
+      await this.prisma.$transaction(async (tx) => {
+        await tx.user.create({
+          data: {
+            id,
+            username: input.username,
+            passwordHash: input.passwordHash,
+            passwordChangedAt: input.now,
+            status: input.status,
+          },
+        });
+        await tx.userRoleLink.create({
+          data: { userId: id, roleId: role.id },
+        });
+      });
+      const user = await this.findById(id);
+      if (!user) {
+        throw new DomainError(ErrorCodes.internal, 500, PublicMessages.internal);
+      }
+      return user;
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        throw new DomainError(ErrorCodes.conflict, 409, PublicMessages.conflict);
+      }
+      bubble(error);
+    }
+  }
+
+  async updateLocalUser(input: UpdateLocalUserInput): Promise<UserRecord> {
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        if (input.status) {
+          await tx.user.update({
+            where: { id: input.id },
+            data: { status: input.status },
+          });
+        }
+        if (input.role) {
+          const role = await tx.role.findUnique({ where: { code: input.role } });
+          if (!role) {
+            throw new DomainError(ErrorCodes.internal, 500, PublicMessages.internal);
+          }
+          await tx.userRoleLink.deleteMany({ where: { userId: input.id } });
+          await tx.userRoleLink.create({
+            data: { userId: input.id, roleId: role.id },
+          });
+        }
+      });
+      const user = await this.findById(input.id);
+      if (!user) {
+        throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+      }
+      return user;
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async setPasswordHash(id: string, passwordHash: string, now: Date): Promise<void> {
+    try {
+      const updated = await this.prisma.user.updateMany({
+        where: { id, deletedAt: null },
+        data: { passwordHash, passwordChangedAt: now },
+      });
+      if (updated.count !== 1) {
+        throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+      }
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async touchLastLogin(id: string, now: Date): Promise<void> {
+    try {
+      await this.prisma.user.updateMany({
+        where: { id, deletedAt: null },
+        data: { lastLoginAt: now },
+      });
     } catch (error) {
       bubble(error);
     }
@@ -371,6 +483,12 @@ export class PrismaIdentityStore
       if (existing && existing.status !== 'ACTIVE') {
         return { ok: false, reason: 'blocked' };
       }
+      if (existing) {
+        const roles = existing.userRoles.map((link) => link.role.code).filter(isUserRole);
+        if (isStaffRole(primaryRole(roles)) || existing.passwordHash) {
+          return { ok: false, reason: 'blocked' };
+        }
+      }
       const userId = existing?.id ?? newId();
       if (!existing) {
         const role = await tx.role.findUnique({ where: { code: 'CUSTOMER' } });
@@ -445,10 +563,13 @@ function toUser(user: UserGraph): UserRecord {
     id: user.id,
     username: user.username ?? '',
     role: primaryRole(roles),
-    roles: roles.length > 0 ? roles : ['CUSTOMER'],
+    roles: roles.length > 0 ? roles : (['CUSTOMER'] as UserRole[]),
     status,
+    passwordHash: user.passwordHash,
     mfaEnabled: Boolean(active),
     mfaSecretCiphertext: current?.secretEncrypted ?? null,
+    lastLoginAt: user.lastLoginAt,
+    createdAt: user.createdAt,
   };
 }
 

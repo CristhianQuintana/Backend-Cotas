@@ -7,8 +7,39 @@ export interface UserRecord {
   role: UserRole;
   roles: UserRole[];
   status: UserStatus;
+  passwordHash: string | null;
   mfaEnabled: boolean;
   mfaSecretCiphertext: string | null;
+  lastLoginAt: Date | null;
+  createdAt: Date;
+}
+
+export interface PublicUserView {
+  id: string;
+  username: string;
+  role: UserRole;
+  roles: UserRole[];
+  status: UserStatus;
+  mfaEnabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+export function toPublicUser(user: UserRecord): PublicUserView {
+  return {
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    roles: user.roles,
+    status: user.status,
+    mfaEnabled: user.mfaEnabled,
+    lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+    createdAt: user.createdAt.toISOString(),
+  };
+}
+
+export function isStaffRole(role: UserRole): boolean {
+  return role === 'ADMIN' || role === 'OPERATOR';
 }
 
 export interface AuthenticatedUser {

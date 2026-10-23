@@ -3,7 +3,12 @@ import type { Clock } from '../../../../common/utils/clock';
 import type { AppConfig } from '../../../../config/app-config';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { RefreshSessionUseCase } from '../../application/use-cases/refresh-session.use-case';
-import type { TokenService, MfaService, MfaSecretCipher } from '../../domain/ports/identity.ports';
+import type {
+  TokenService,
+  MfaService,
+  MfaSecretCipher,
+  PasswordHasher,
+} from '../../domain/ports/identity.ports';
 import { InMemoryIdentity, addUser } from '../../../../../test/fakes/in-memory-identity';
 import { FakeXui } from '../../../../../test/fakes/fake-xui';
 
@@ -44,6 +49,17 @@ describe('identidad', () => {
     encrypt: (plain) => `enc:${plain}`,
     decrypt: (payload) => payload.replace(/^enc:/u, ''),
   };
+  const passwords: PasswordHasher = {
+    async hash(password) {
+      return `hash:${password}`;
+    },
+    async verify(password, passwordHash) {
+      return passwordHash === `hash:${password}`;
+    },
+    async dummyHash() {
+      return 'dummy';
+    },
+  };
 
   function setup() {
     const identity = new InMemoryIdentity();
@@ -51,9 +67,11 @@ describe('identidad', () => {
     const login = new LoginUseCase(
       identity,
       identity,
+      identity,
       tokens,
       mfa,
       cipher,
+      passwords,
       identity,
       config,
       clock,
@@ -110,23 +128,64 @@ describe('identidad', () => {
     expect(identity.users.find((user) => user.username === 'linea.nueva')?.role).toBe('CUSTOMER');
   });
 
-  it('pide enrolamiento MFA al operador y rota el refresh token', async () => {
-    const { identity, login, refresh, xui } = setup();
-    xui.lines.set('operator.demo', 'correct-horse-battery');
-    xui.lines.set('viewer.demo', 'correct-horse-battery');
+  it('autentica personal con contraseña local Argon2 y exige MFA', async () => {
+    const { identity, login, xui } = setup();
+    xui.lines.set('operador', 'should-not-use-xui');
     addUser(identity, {
-      username: 'operator.demo',
+      username: 'operador',
       role: 'OPERATOR',
       status: 'ACTIVE',
+      passwordHash: 'hash:local-operator-password',
       mfaEnabled: false,
       mfaSecretCiphertext: null,
     });
+
     const enrollment = await login.execute({
-      username: 'operator.demo',
-      password: 'correct-horse-battery',
+      username: 'operador',
+      password: 'local-operator-password',
       meta,
     });
     expect(enrollment.type).toBe('mfa_enrollment_required');
+
+    addUser(identity, {
+      username: 'operador.mfa',
+      role: 'OPERATOR',
+      status: 'ACTIVE',
+      passwordHash: 'hash:local-operator-password',
+      mfaEnabled: true,
+      mfaSecretCiphertext: 'enc:SECRET',
+    });
+    await expect(
+      login.execute({
+        username: 'operador.mfa',
+        password: 'local-operator-password',
+        meta,
+      }),
+    ).rejects.toThrow(PublicMessages.invalidCredentials);
+
+    const session = await login.execute({
+      username: 'operador.mfa',
+      password: 'local-operator-password',
+      totpCode: '123456',
+      meta,
+    });
+    expect(session.type).toBe('authenticated');
+  });
+
+  it('no usa XUI para operadores y rota el refresh token de clientes', async () => {
+    const { identity, login, refresh, xui } = setup();
+    xui.lines.set('viewer.demo', 'correct-horse-battery');
+    addUser(identity, {
+      username: 'operador',
+      role: 'OPERATOR',
+      status: 'ACTIVE',
+      passwordHash: null,
+      mfaEnabled: false,
+      mfaSecretCiphertext: null,
+    });
+    await expect(
+      login.execute({ username: 'operador', password: 'anything-long', meta }),
+    ).rejects.toThrow(PublicMessages.invalidCredentials);
 
     const viewer = addUser(identity, {
       username: 'viewer.demo',

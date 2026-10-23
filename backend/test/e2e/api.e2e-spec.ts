@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
+import argon2 from 'argon2';
 import { TOTP, Secret } from 'otpauth';
 import request from 'supertest';
 import { createSwaggerDocument } from '../../src/configure-http';
@@ -20,6 +21,12 @@ describe('API COTAS', () => {
     app = created.app;
     identity = created.identity;
     xui = created.xui;
+    const operatorPasswordHash = await argon2.hash(password, {
+      type: argon2.argon2id,
+      memoryCost: 4096,
+      timeCost: 1,
+      parallelism: 1,
+    });
     xui.liveCategories = [{ id: '1', name: 'Noticias', parentId: null }];
     xui.liveStreams = [
       { id: '1001', name: 'Canal Demo', categoryId: '1', iconUrl: null, epgChannelId: 'demo' },
@@ -66,6 +73,7 @@ describe('API COTAS', () => {
       username: 'operator.demo',
       role: 'OPERATOR',
       status: 'ACTIVE',
+      passwordHash: operatorPasswordHash,
       mfaEnabled: false,
       mfaSecretCiphertext: null,
     });
