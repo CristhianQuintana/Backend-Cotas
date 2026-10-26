@@ -14,18 +14,12 @@ import type { SessionRecord } from '../../domain/models/session';
 import { XUI_CLIENT, type XuiClient } from '../../../integrations/xui/domain/models';
 import {
   LINE_ACCESS,
-  MFA_CIPHER,
-  MFA_SERVICE,
   PASSWORD_HASHER,
-  RECOVERY_CODE_REPOSITORY,
   SESSION_REPOSITORY,
   TOKEN_SERVICE,
   USER_REPOSITORY,
   type LineAccess,
-  type MfaSecretCipher,
-  type MfaService,
   type PasswordHasher,
-  type RecoveryCodeRepository,
   type SessionRepository,
   type TokenService,
   type UserRepository,
@@ -39,29 +33,20 @@ export interface LoginCommand {
   meta: RequestMeta;
 }
 
-export type LoginResult =
-  | {
-      type: 'authenticated';
-      accessToken: string;
-      refreshToken: string;
-      expiresIn: number;
-      tokenType: 'Bearer';
-    }
-  | {
-      type: 'mfa_enrollment_required';
-      enrollmentToken: string;
-      expiresIn: number;
-    };
+export type LoginResult = {
+  type: 'authenticated';
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType: 'Bearer';
+};
 
 @Injectable()
 export class LoginUseCase {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
-    @Inject(RECOVERY_CODE_REPOSITORY) private readonly recoveryCodes: RecoveryCodeRepository,
     @Inject(TOKEN_SERVICE) private readonly tokens: TokenService,
-    @Inject(MFA_SERVICE) private readonly mfa: MfaService,
-    @Inject(MFA_CIPHER) private readonly cipher: MfaSecretCipher,
     @Inject(PASSWORD_HASHER) private readonly passwords: PasswordHasher,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -96,10 +81,7 @@ export class LoginUseCase {
       await this.failLogin(command.meta, user.id, 'blocked');
     }
 
-    if (isStaffRole(user.role)) {
-      return this.loginStaff(user, command);
-    }
-
+    // Panel admin/operador: solo usuario y contraseña local en esta fase (sin TOTP).
     return this.issueSession(user, command.meta);
   }
 
@@ -122,38 +104,6 @@ export class LoginUseCase {
     }
 
     return this.issueSession(accepted.user, command.meta);
-  }
-
-  private async loginStaff(user: UserRecord, command: LoginCommand): Promise<LoginResult> {
-    if (!user.mfaEnabled || !user.mfaSecretCiphertext) {
-      const enrollmentToken = await this.tokens.signEnrollmentToken(user.id);
-      await this.audit.record({
-        action: 'auth.mfa_enrollment_challenge',
-        result: 'pending',
-        actorUserId: user.id,
-        correlationId: command.meta.correlationId,
-        ipAddress: command.meta.ipAddress,
-      });
-      return {
-        type: 'mfa_enrollment_required',
-        enrollmentToken,
-        expiresIn: this.config.enrollmentTokenTtlSeconds,
-      };
-    }
-
-    const secret = this.cipher.decrypt(user.mfaSecretCiphertext);
-    const secondFactor = command.recoveryCode
-      ? await this.recoveryCodes.consume(
-          user.id,
-          this.tokens.hashToken(command.recoveryCode.trim().toLowerCase()),
-          this.clock.now(),
-        )
-      : Boolean(command.totpCode) && this.mfa.verify(secret, command.totpCode ?? '');
-    if (!secondFactor) {
-      await this.failLogin(command.meta, user.id, 'second_factor');
-    }
-
-    return this.issueSession(user, command.meta);
   }
 
   private async issueSession(user: UserRecord, meta: RequestMeta): Promise<LoginResult> {

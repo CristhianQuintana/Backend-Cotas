@@ -10,7 +10,7 @@ Esta matriz describe el código de esta versión y el contenedor local. No certi
 | Mensaje genérico de login | Implementado y cubierto por prueba E2E. |
 | JWT de acceso corto, refresh opaco hasheado, rotación y revocación de familia | Implementado. La reutilización está cubierta por prueba E2E con almacén en memoria. |
 | Logout y usuario deshabilitado invalidan el access token vigente | Implementado y cubierto por prueba E2E. |
-| TOTP y códigos de recuperación para operador y administrador | Implementado para el alta. El cliente no usa MFA. Cubierto por prueba E2E. |
+| TOTP para operador y administrador | Infraestructura presente; el login del panel no lo exige en esta fase. El cliente no usa MFA. |
 | Secreto TOTP y contraseña de línea cifrados con AES-256-GCM | Implementado. |
 | Autorización por rol e imposibilidad de borrar la sesión de otro usuario | Implementado y cubierto por prueba E2E. |
 | Límite de intentos en login, refresh y MFA | Implementado por proceso. No es un límite de clúster. |

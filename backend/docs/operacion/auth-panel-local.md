@@ -6,13 +6,13 @@ Los clientes IPTV (`CUSTOMER`) siguen autenticándose con la línea XUI.
 
 ## Login
 
-`POST /api/v1/auth/login` con `{ "username", "password" }` y, si MFA ya está activo, `totpCode` o `recoveryCode`.
+`POST /api/v1/auth/login` con `{ "username", "password" }`.
 
-1. Si el usuario tiene `password_hash` → verificación local.
+1. Si el usuario tiene `password_hash` → verificación local y sesión (`type: "authenticated"`).
 2. Si es `ADMIN`/`OPERATOR` sin hash → rechazo genérico (hay que seed/reset).
 3. En caso contrario → flujo XUI de cliente.
 
-Personal sin MFA enrolado recibe `type: "mfa_enrollment_required"` y debe completar `/auth/mfa/setup` y `/auth/mfa/confirm`.
+En esta fase el panel administrativo **no** exige MFA/TOTP: basta usuario y contraseña local. Los endpoints `/auth/mfa/*` pueden permanecer, pero el login del personal no los usa.
 
 ## Gestión de usuarios (solo `ADMIN`)
 
@@ -40,7 +40,7 @@ SEED_ADMIN_PASSWORD=<contraseña de 12+ caracteres>
 npm run seed
 ```
 
-En el servidor de pruebas también puede usarse el workflow `bootstrap-admin` (entorno `pruebas`, secreto `BOOTSTRAP_ADMIN_PASSWORD`). No versionar esas contraseñas. La política exige mínimo 12 caracteres; no se aceptan valores cortos como `0p3r4d0r`. Tras el seed, el primer login pedirá enrolar MFA.
+En el servidor de pruebas también puede usarse el workflow `bootstrap-admin` (entorno `pruebas`, secreto `BOOTSTRAP_ADMIN_PASSWORD`). No versionar esas contraseñas. La política exige mínimo 12 caracteres; no se aceptan valores cortos como `0p3r4d0r`. Tras el seed, el login debe devolver tokens de acceso.
 
 ## Despliegue
 
@@ -48,4 +48,4 @@ En el servidor de pruebas también puede usarse el workflow `bootstrap-admin` (e
 2. Publicar imagen / `docker compose up -d --no-build`.
 3. Migraciones: el entrypoint ejecuta `prisma migrate deploy` si `RUN_MIGRATIONS` ≠ `false`.
 4. Ejecutar seed una vez (o `bootstrap-admin`) con las variables anteriores.
-5. Comprobar `GET /api/v1/health/live` y login local hasta `mfa_enrollment_required`.
+5. Comprobar `GET /api/v1/health/live` y login local con `type: "authenticated"`.

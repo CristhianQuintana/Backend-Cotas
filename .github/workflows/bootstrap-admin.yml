@@ -94,31 +94,24 @@ jobs:
           grep -q "${CHECK_USERNAME}" /tmp/cotas-admin-check.txt
           grep -q 'ADMIN' /tmp/cotas-admin-check.txt
           grep -q 'ACTIVE' /tmp/cotas-admin-check.txt
-      - name: Probar login local (MFA obligatorio)
+      - name: Probar login local (usuario y contraseña)
         env:
           SEED_ADMIN_USERNAME: ${{ inputs.username }}
           SEED_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
           ENV_FILE: /opt/cotas/env/.env
-          COMPOSE_DIR: ${{ github.workspace }}/backend
         run: |
           set -eu
           api_port=$(grep -E '^BACKEND_PORT=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
           api_port=${api_port:-3100}
           response_file=$(mktemp)
           body_file=$(mktemp)
-          code_file=$(mktemp)
-          trap 'rm -f "$response_file" "$body_file" "$code_file"' EXIT
+          trap 'rm -f "$response_file" "$body_file"' EXIT
           BODY_FILE="$body_file" python3 -c 'import json,os; json.dump({"username":os.environ["SEED_ADMIN_USERNAME"],"password":os.environ["SEED_ADMIN_PASSWORD"]}, open(os.environ["BODY_FILE"],"w"), separators=(",",":"))'
           http_code=$(curl -sS -o "$response_file" -w '%{http_code}' -X POST "http://127.0.0.1:${api_port}/api/v1/auth/login" \
             -H 'content-type: application/json' \
             --data-binary @"$body_file")
-          if grep -q '"type":"mfa_enrollment_required"' "$response_file" && grep -q '"enrollmentToken"' "$response_file"; then
-            echo "Login local OK: MFA obligatorio pendiente de enrolar."
-            exit 0
-          fi
-          if [ "$http_code" = "401" ] && grep -q 'INVALID_CREDENTIALS' "$response_file"; then
-            # Contraseña sola sin TOTP tras MFA enrolado: el segundo factor es obligatorio.
-            echo "Login local OK: usuario con MFA activo exige segundo factor."
+          if [ "$http_code" = "200" ] && grep -q '"type":"authenticated"' "$response_file" && grep -q '"accessToken"' "$response_file"; then
+            echo "Login local OK: sesión sin MFA."
             exit 0
           fi
           echo "Respuesta de login inesperada (HTTP ${http_code})." >&2

@@ -3,12 +3,7 @@ import type { Clock } from '../../../../common/utils/clock';
 import type { AppConfig } from '../../../../config/app-config';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { RefreshSessionUseCase } from '../../application/use-cases/refresh-session.use-case';
-import type {
-  TokenService,
-  MfaService,
-  MfaSecretCipher,
-  PasswordHasher,
-} from '../../domain/ports/identity.ports';
+import type { TokenService, PasswordHasher } from '../../domain/ports/identity.ports';
 import { InMemoryIdentity, addUser } from '../../../../../test/fakes/in-memory-identity';
 import { FakeXui } from '../../../../../test/fakes/fake-xui';
 
@@ -41,14 +36,6 @@ describe('identidad', () => {
     generateRefreshToken: () => 'refresh-token-value',
     hashToken: (token) => `hashed:${token}`,
   };
-  const mfa: MfaService = {
-    generateSecret: () => ({ base32: 'SECRET', otpauthUrl: 'otpauth://totp/demo' }),
-    verify: (_secret, code) => code === '123456',
-  };
-  const cipher: MfaSecretCipher = {
-    encrypt: (plain) => `enc:${plain}`,
-    decrypt: (payload) => payload.replace(/^enc:/u, ''),
-  };
   const passwords: PasswordHasher = {
     async hash(password) {
       return `hash:${password}`;
@@ -67,10 +54,7 @@ describe('identidad', () => {
     const login = new LoginUseCase(
       identity,
       identity,
-      identity,
       tokens,
-      mfa,
-      cipher,
       passwords,
       identity,
       config,
@@ -128,7 +112,7 @@ describe('identidad', () => {
     expect(identity.users.find((user) => user.username === 'linea.nueva')?.role).toBe('CUSTOMER');
   });
 
-  it('autentica personal con contraseña local Argon2 y exige MFA', async () => {
+  it('autentica personal con contraseña local Argon2 sin MFA', async () => {
     const { identity, login, xui } = setup();
     xui.lines.set('operador', 'should-not-use-xui');
     addUser(identity, {
@@ -140,36 +124,13 @@ describe('identidad', () => {
       mfaSecretCiphertext: null,
     });
 
-    const enrollment = await login.execute({
+    const session = await login.execute({
       username: 'operador',
       password: 'local-operator-password',
       meta,
     });
-    expect(enrollment.type).toBe('mfa_enrollment_required');
-
-    addUser(identity, {
-      username: 'operador.mfa',
-      role: 'OPERATOR',
-      status: 'ACTIVE',
-      passwordHash: 'hash:local-operator-password',
-      mfaEnabled: true,
-      mfaSecretCiphertext: 'enc:SECRET',
-    });
-    await expect(
-      login.execute({
-        username: 'operador.mfa',
-        password: 'local-operator-password',
-        meta,
-      }),
-    ).rejects.toThrow(PublicMessages.invalidCredentials);
-
-    const session = await login.execute({
-      username: 'operador.mfa',
-      password: 'local-operator-password',
-      totpCode: '123456',
-      meta,
-    });
     expect(session.type).toBe('authenticated');
+    expect(session.accessToken).toContain(':OPERATOR');
   });
 
   it('no usa XUI para operadores y rota el refresh token de clientes', async () => {

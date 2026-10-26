@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import argon2 from 'argon2';
-import { TOTP, Secret } from 'otpauth';
 import request from 'supertest';
 import { createSwaggerDocument } from '../../src/configure-http';
 import { PublicMessages } from '../../src/common/exceptions/domain-error';
@@ -200,28 +199,8 @@ describe('API COTAS', () => {
       .expect(200);
   });
 
-  it('enrola MFA del operador, rechaza al espectador en dependencias y revoca la sesión', async () => {
-    const first = await login('operator.demo');
-    expect(first.body.type).toBe('mfa_enrollment_required');
-    const enrollment = first.body.enrollmentToken as string;
-    const setup = await http()
-      .post('/api/v1/auth/mfa/setup')
-      .set('Authorization', `Bearer ${enrollment}`)
-      .expect(200);
-    const totp = new TOTP({
-      secret: Secret.fromBase32(setup.body.secret),
-      digits: 6,
-      period: 30,
-      algorithm: 'SHA1',
-    });
-    const confirmed = await http()
-      .post('/api/v1/auth/mfa/confirm')
-      .set('Authorization', `Bearer ${enrollment}`)
-      .send({ totpCode: totp.generate() })
-      .expect(200);
-    expect(confirmed.body.recoveryCodes).toHaveLength(8);
-
-    const logged = await login('operator.demo', { totpCode: totp.generate() });
+  it('autentica al operador solo con usuario y contraseña, consulta dependencias y revoca la sesión', async () => {
+    const logged = await login('operator.demo');
     expect(logged.body.type).toBe('authenticated');
     const token = logged.body.accessToken as string;
     const dependencies = await http()

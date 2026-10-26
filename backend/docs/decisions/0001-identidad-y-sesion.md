@@ -10,7 +10,7 @@ Estado: reglas vigentes de esta entrega. El ingreso por línea XUI es el mecanis
 - Catálogo y reproducción usan la línea de quien inició sesión, no una credencial compartida del proceso.
 - La contraseña de la línea se guarda cifrada con AES-256-GCM en `iptv_accounts.password_encrypted` porque la URL de reproducción la necesita después del login. No se guarda la URL.
 - El refresh token es opaco. Solo se guarda su SHA-256. Se rota en cada uso y, si se reutiliza uno ya rotado, se revoca toda la familia.
-- `OPERATOR` y `ADMIN` deben enrolar TOTP. El cliente no usa MFA. Los códigos de recuperación viven en `auth_challenges` con propósito `MFA_RECOVERY`.
+- `OPERATOR` y `ADMIN` entran con usuario y contraseña local (Argon2id). En esta fase el panel no exige TOTP. El cliente IPTV no usa MFA.
 - El guard de acceso vuelve a consultar sesión y usuario en PostgreSQL.
 
 ## Reglas ajustables, ya aplicadas así en el código
@@ -20,7 +20,8 @@ Coinciden con `Documentación/Base de datos.md` y no bloquean el despliegue de p
 - DEC-02: una línea XUI activa por usuario de la aplicación.
 - DEC-03: sin máximo de dispositivos.
 - DEC-04: sin máximo de sesiones simultáneas.
-- DEC-05: MFA obligatorio para `OPERATOR` y `ADMIN`. El cliente no lo usa.
+- DEC-05: MFA del personal desactivado en el login del panel (fase actual). El cliente no lo usa.
+
 - DEC-06: códigos de recuperación de un solo uso, con vencimiento de un año.
 - DEC-07: sin historial de reproducción.
 - DEC-08: sin caché persistente de catálogo ni EPG. Hay memoria de proceso de 60 segundos.
