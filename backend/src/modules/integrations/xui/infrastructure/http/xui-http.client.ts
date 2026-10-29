@@ -106,11 +106,7 @@ export class XuiHttpClient implements XuiClient {
     );
   }
 
-  getShortEpg(
-    streamId: string,
-    credentials?: XuiCredentials,
-    options?: { limit?: number },
-  ) {
+  getShortEpg(streamId: string, credentials?: XuiCredentials, options?: { limit?: number }) {
     if (!/^[0-9]{1,12}$/u.test(streamId)) {
       throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.contentNotFound);
     }
@@ -120,12 +116,7 @@ export class XuiHttpClient implements XuiClient {
       const safe = Math.max(1, Math.min(Math.trunc(limit), 50));
       params.limit = String(safe);
     }
-    return this.request(
-      'get_short_epg',
-      params,
-      (payload) => mapShortEpg(payload),
-      credentials,
-    );
+    return this.request('get_short_epg', params, (payload) => mapShortEpg(payload), credentials);
   }
 
   getServerInfo(credentials?: XuiCredentials) {

@@ -236,9 +236,7 @@ function mapEpg(value: unknown): XuiEpgEntry | null {
   const start = asName(value.start) ?? asName(value.start_time);
   const end = asName(value.end) ?? asName(value.end_time) ?? asName(value.stop);
   const startAt =
-    asIsoFromUnix(value.start_timestamp) ??
-    asIsoFromUnix(value.start) ??
-    asIsoFromDateText(start);
+    asIsoFromUnix(value.start_timestamp) ?? asIsoFromUnix(value.start) ?? asIsoFromDateText(start);
   const endAt =
     asIsoFromUnix(value.stop_timestamp) ??
     asIsoFromUnix(value.end_timestamp) ??

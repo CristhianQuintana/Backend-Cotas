@@ -1,9 +1,7 @@
 import { presentChannelEpg } from '../../application/epg.presenter';
 import type { XuiEpgEntry } from '../../../integrations/xui/domain/models';
 
-function entry(
-  partial: Partial<XuiEpgEntry> & Pick<XuiEpgEntry, 'id' | 'title'>,
-): XuiEpgEntry {
+function entry(partial: Partial<XuiEpgEntry> & Pick<XuiEpgEntry, 'id' | 'title'>): XuiEpgEntry {
   return {
     description: null,
     start: null,

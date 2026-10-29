@@ -213,10 +213,7 @@ export class CatalogUseCase {
     return { generatedAt: new Date().toISOString(), channels };
   }
 
-  private async requireLiveStream(
-    streamId: string,
-    credentials?: XuiCredentials,
-  ): Promise<void> {
+  private async requireLiveStream(streamId: string, credentials?: XuiCredentials): Promise<void> {
     const streams = await this.remember('live-streams', credentials, () =>
       this.xui.getLiveStreams(credentials),
     );
