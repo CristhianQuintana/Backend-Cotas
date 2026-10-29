@@ -32,6 +32,20 @@ if grep -q 'local_only_dev_password' "$env_file" || grep -q 'CHANGE_ME' "$env_fi
   exit 2
 fi
 
+# Redis es nuevo en esta entrega: si falta REDIS_PASSWORD, se genera en el servidor
+# sin imprimir el valor. No se versiona ni se reutiliza un marcador.
+if ! grep -Eq '^REDIS_PASSWORD=' "$env_file"; then
+  generated=$(openssl rand -base64 24 | tr -d '\n=+/')
+  {
+    printf '\n# Generado por server-deploy.sh (Redis interno)\n'
+    printf 'REDIS_PASSWORD=%s\n' "$generated"
+    printf 'REDIS_ENABLED=true\n'
+    printf 'REDIS_URL=redis://redis:6379/0\n'
+  } >> "$env_file"
+  chmod 600 "$env_file" || true
+  echo "Se añadió REDIS_PASSWORD al entorno del servidor (valor no mostrado)."
+fi
+
 read_env() {
   key=$1
   fallback=$2

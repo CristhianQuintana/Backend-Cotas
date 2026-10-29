@@ -7,6 +7,7 @@ Ningún valor real se pide por chat ni se guarda en Git. `.env` del servidor viv
 | Dato | Dónde | Para qué |
 | --- | --- | --- |
 | `POSTGRES_PASSWORD` | Solo `/opt/cotas/env/.env` | Contraseña nueva de PostgreSQL. No vale `local_only_dev_password` |
+| `REDIS_PASSWORD` | Mismo archivo | Obligatoria en production con Redis. No versionar ni reutilizar marcadores `CHANGE_ME` |
 | `POSTGRES_USER`, `POSTGRES_DB` | Mismo archivo | Deben coincidir con el volumen ya creado. Por defecto `cotas` y `cotas_dev` |
 | `DATABASE_URL` | Mismo archivo, apuntando a `127.0.0.1` solo si la API corre en el host | Dentro de Compose el entrypoint reescribe `localhost` hacia el servicio `postgres` |
 | `JWT_ACCESS_SECRET`, `MFA_ENCRYPTION_KEY` | Mismo archivo, distintas, 32 caracteres o más, sin `CHANGE_ME` | Firma y cifrado |
