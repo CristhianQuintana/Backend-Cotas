@@ -15,7 +15,7 @@ Los controladores validan y delegan. Los casos de uso dependen de puertos. Prism
 
 ## Catálogo
 
-La lista se recuerda 60 segundos en el proceso, separada por el usuario de la línea. Un error de XUI no se guarda. No hay tablas de catálogo. Al reiniciar el proceso se vuelve a consultar XUI.
+Las listas y fichas se cachean por usuario de línea: memoria de proceso (TTL corto) y Redis compartido (`CATALOG_CACHE_TTL_SECONDS`). El worker BullMQ refresca periódicamente el catálogo de la línea de sonda en Redis. Si Redis cae, la API sigue con memoria local y XUI. No hay tablas de catálogo en PostgreSQL. Detalle operativo en `docs/operacion/redis-catalogo.md`.
 
 ## Reproducción
 
@@ -31,10 +31,10 @@ El host tiene que estar en `XUI_ALLOWED_STREAM_HOSTS`. El cliente no envía una 
 
 ## Ejecución
 
-El despliegue de esta entrega son dos contenedores, `backend` y `postgres`, definidos en `docker-compose.yml`. El backend aplica `prisma migrate deploy` al arrancar y después escucha. No hay Redis, colas ni proxy dentro de Compose. Nginx queda como referencia en `deploy/nginx/api.conf.example`.
+El despliegue de esta entrega son cuatro contenedores en `docker-compose.yml`: `postgres`, `redis`, `backend` y `worker` (misma imagen que el API, `APP_ROLE=worker`). Redis no publica puertos. El backend aplica `prisma migrate deploy` al arrancar. Nginx queda como referencia en `deploy/nginx/api.conf.example`.
 
 ## Límites conscientes
 
-- El límite de login, refresh y MFA es por proceso. Sin Redis no es global a varias réplicas.
+- El límite de login, refresh y MFA es por proceso; con Redis el catálogo sí se comparte entre API y worker.
 - Una sola réplica debe aplicar migraciones. No escale el servicio `backend` sin sacar la migración del arranque.
 - Swagger se publica en `/api/docs` fuera de `NODE_ENV=production`, salvo `SWAGGER_ENABLED=true`. El Compose de despliegue lo deja en `false`.

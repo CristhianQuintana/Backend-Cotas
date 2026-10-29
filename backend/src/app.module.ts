@@ -11,6 +11,12 @@ import { PrismaAuditRepository } from './modules/audit/infrastructure/prisma-aud
 import { AUDIT_REPOSITORY } from './modules/audit/domain/audit-repository';
 import { CatalogController } from './modules/catalog/presentation/http/catalog.controller';
 import { CatalogUseCase } from './modules/catalog/application/catalog.use-case';
+import { CatalogSyncService } from './modules/catalog/application/catalog-sync.service';
+import { CATALOG_CACHE } from './modules/catalog/domain/catalog-cache';
+import {
+  MemoryCatalogCache,
+  RedisCatalogCache,
+} from './modules/catalog/infrastructure/redis-catalog.cache';
 import { HealthController } from './modules/health/health.controller';
 import { HealthService } from './modules/health/health.service';
 import { XuiHttpClient } from './modules/integrations/xui/infrastructure/http/xui-http.client';
@@ -113,7 +119,19 @@ import { AuthorizePlaybackUseCase } from './modules/playback/application/authori
     BeginMfaEnrollmentUseCase,
     ConfirmMfaEnrollmentUseCase,
     AdminUsersUseCase,
+    RedisCatalogCache,
+    MemoryCatalogCache,
+    {
+      provide: CATALOG_CACHE,
+      inject: [APP_CONFIG, RedisCatalogCache, MemoryCatalogCache],
+      useFactory: (
+        config: AppConfig,
+        redisCache: RedisCatalogCache,
+        memoryCache: MemoryCatalogCache,
+      ) => (config.redisEnabled ? redisCache : memoryCache),
+    },
     CatalogUseCase,
+    CatalogSyncService,
     AuthorizePlaybackUseCase,
     ListAuditUseCase,
     HealthService,

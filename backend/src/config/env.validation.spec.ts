@@ -29,6 +29,11 @@ describe('validateEnv', () => {
     ARGON2_MEMORY_COST: '4096',
     ARGON2_TIME_COST: '1',
     ARGON2_PARALLELISM: '1',
+    REDIS_ENABLED: 'false',
+    CATALOG_CACHE_TTL_SECONDS: '300',
+    CATALOG_EPG_CACHE_TTL_SECONDS: '120',
+    CATALOG_SYNC_INTERVAL_MS: '300000',
+    CATALOG_SYNC_CONCURRENCY: '1',
   });
 
   it('acepta una configuración de prueba completa', () => {

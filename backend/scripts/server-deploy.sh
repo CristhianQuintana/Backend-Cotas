@@ -98,7 +98,9 @@ attempt=0
 while [ "$attempt" -lt 24 ]; do
   status=$(docker compose ps --format '{{.Service}} {{.Status}}' || true)
   if printf '%s\n' "$status" | grep -q '^backend .*healthy' \
-    && printf '%s\n' "$status" | grep -q '^postgres .*healthy'; then
+    && printf '%s\n' "$status" | grep -q '^postgres .*healthy' \
+    && printf '%s\n' "$status" | grep -q '^redis .*healthy' \
+    && printf '%s\n' "$status" | grep -q '^worker .*healthy'; then
     healthy=1
     break
   fi

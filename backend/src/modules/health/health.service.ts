@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DomainError, ErrorCodes, PublicMessages } from '../../common/exceptions/domain-error';
+import { APP_CONFIG, type AppConfig } from '../../config/app-config';
+import { CATALOG_CACHE, type CatalogCache } from '../catalog/domain/catalog-cache';
 import { XUI_CLIENT, type XuiClient } from '../integrations/xui/domain/models';
 import { PrismaService } from '../../infrastructure/database/prisma/prisma.service';
 
@@ -8,6 +10,8 @@ export class HealthService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(XUI_CLIENT) private readonly xui: XuiClient,
+    @Inject(CATALOG_CACHE) private readonly catalogCache: CatalogCache,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   live() {
@@ -37,9 +41,23 @@ export class HealthService {
         xui = 'down';
       }
     }
+    const redis = !this.config.redisEnabled
+      ? ('skipped' as const)
+      : (await this.catalogCache.ping())
+        ? ('up' as const)
+        : ('down' as const);
+    const ok = database && xui === 'up';
     return {
-      status: database && xui === 'up' ? ('ok' as const) : ('degraded' as const),
-      checks: { database: database ? ('up' as const) : ('down' as const), xui },
+      status: ok
+        ? redis === 'down'
+          ? ('degraded' as const)
+          : ('ok' as const)
+        : ('degraded' as const),
+      checks: {
+        database: database ? ('up' as const) : ('down' as const),
+        xui,
+        redis,
+      },
     };
   }
 }

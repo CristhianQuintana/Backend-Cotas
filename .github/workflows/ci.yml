@@ -68,4 +68,5 @@ jobs:
           XUI_PASSWORD: xui_test_password_not_real
           XUI_ALLOWED_STREAM_HOSTS: xui.test.local
           CORS_ORIGINS: http://localhost:3000
+          REDIS_ENABLED: "false"
       - run: npm run build

@@ -100,6 +100,7 @@ jobs:
             -e SWAGGER_ENABLED=false \
             -e ARGON2_MEMORY_COST=19456 \
             -e ARGON2_TIME_COST=2 \
+            -e REDIS_ENABLED=false \
             "$IMAGE"
           ok=0
           i=0

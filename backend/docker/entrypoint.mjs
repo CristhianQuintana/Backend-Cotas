@@ -2,21 +2,30 @@ import { spawn } from 'node:child_process';
 
 applyDatabaseUrl();
 
-if (process.env.RUN_MIGRATIONS !== 'false') {
-  await run(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy']);
+const role = (process.env.APP_ROLE || 'api').trim().toLowerCase();
+
+if (role === 'worker') {
+  const worker = spawn(process.execPath, ['dist/worker.main.js'], { stdio: 'inherit' });
+  forwardSignals(worker);
+  worker.on('exit', (code) => process.exit(code ?? 0));
+} else {
+  if (process.env.RUN_MIGRATIONS !== 'false') {
+    await run(process.execPath, ['node_modules/prisma/build/index.js', 'migrate', 'deploy']);
+  }
+  const server = spawn(process.execPath, ['dist/main.js'], { stdio: 'inherit' });
+  forwardSignals(server);
+  server.on('exit', (code) => process.exit(code ?? 0));
 }
 
-const server = spawn(process.execPath, ['dist/main.js'], { stdio: 'inherit' });
-const forward = (signal) => {
-  if (server.exitCode === null && server.signalCode === null) {
-    server.kill(signal);
-  }
-};
-process.on('SIGTERM', () => forward('SIGTERM'));
-process.on('SIGINT', () => forward('SIGINT'));
-server.on('exit', (code) => {
-  process.exit(code ?? 0);
-});
+function forwardSignals(child) {
+  const forward = (signal) => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill(signal);
+    }
+  };
+  process.on('SIGTERM', () => forward('SIGTERM'));
+  process.on('SIGINT', () => forward('SIGINT'));
+}
 
 function applyDatabaseUrl() {
   const current = process.env.DATABASE_URL ?? '';

@@ -1,13 +1,13 @@
 # Despliegue y reversión
 
-Objetivo: dos contenedores en el servidor de pruebas. La planificación nombra `10.10.0.31`. Confirme puertos libres y acceso antes de copiar nada. Esta guía no abre sesión en ese equipo.
+Objetivo: cuatro servicios en el servidor de pruebas (`postgres`, `redis`, `backend`, `worker`). La planificación nombra `10.10.0.31`. Confirme puertos libres y acceso antes de copiar nada. Esta guía no abre sesión en ese equipo. Detalle de Redis y el worker: `redis-catalogo.md`.
 
 ## Antes de cambiar el servidor
 
 1. Anote sistema, CPU, RAM, disco, `docker version`, `docker compose version`, contenedores, redes, volúmenes y puertos en escucha.
 2. Confirme que el proceso del servidor llega a XUI por la red privada.
 3. Elija un directorio y un usuario de operación. No copie `.env` al repositorio ni a un informe.
-4. Elija `POSTGRES_PASSWORD` y `PUBLIC_CORS_ORIGINS` con `https`. No reutilice `local_only_dev_password` en el servidor.
+4. Elija `POSTGRES_PASSWORD`, `REDIS_PASSWORD` y `PUBLIC_CORS_ORIGINS` con `https`. No reutilice contraseñas locales ni marcadores `CHANGE_ME` en el servidor.
 5. Si ya hubiera datos, haga la copia del apartado siguiente antes de la primera migración.
 
 ## Subir y arrancar
@@ -57,4 +57,6 @@ Si la salud falla, el script detiene solo el servicio `backend`, deja PostgreSQL
 
 La reversión la autoriza quien opera el servidor de pruebas. En esta entrega no se ejecutó esa vuelta sobre `10.10.0.31`, porque el runner todavía no está registrado allí.
 
-`docker compose stop` detiene los dos servicios y conserva el volumen. `docker compose down` también conserva el volumen nombrado. `docker compose down -v` lo elimina: no lo use como reversión.
+El script de despliegue espera salud de `postgres`, `redis`, `backend` y `worker`. Si la salud falla, detiene solo `backend` y deja PostgreSQL (y Redis) en marcha.
+
+`docker compose stop` detiene los servicios y conserva los volúmenes. `docker compose down` también conserva `cotas_pg` y `cotas_redis`. `docker compose down -v` los elimina: no lo use como reversión.

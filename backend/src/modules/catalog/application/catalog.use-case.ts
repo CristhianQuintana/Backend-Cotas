@@ -1,5 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { DomainError, ErrorCodes, PublicMessages } from '../../../common/exceptions/domain-error';
+import { APP_CONFIG, type AppConfig } from '../../../config/app-config';
 import { paginate, type Page } from '../../../common/utils/pagination';
 import {
   XUI_CLIENT,
@@ -15,6 +16,8 @@ import {
   type XuiVodDetails,
   type XuiVodStream,
 } from '../../integrations/xui/domain/models';
+import { CATALOG_CACHE, catalogCacheKey, type CatalogCache } from '../domain/catalog-cache';
+import { MemoryCatalogCache } from '../infrastructure/redis-catalog.cache';
 
 export interface CatalogQuery {
   page: number;
@@ -23,13 +26,21 @@ export interface CatalogQuery {
   search?: string;
 }
 
-const CACHE_MS = 60_000;
-
 @Injectable()
 export class CatalogUseCase {
-  private readonly memory = new Map<string, { at: number; value: unknown }>();
+  private readonly shared: CatalogCache;
+  private readonly memory = new MemoryCatalogCache();
 
-  constructor(@Inject(XUI_CLIENT) private readonly xui: XuiClient) {}
+  constructor(
+    @Inject(XUI_CLIENT) private readonly xui: XuiClient,
+    @Optional() @Inject(CATALOG_CACHE) cache?: CatalogCache,
+    @Optional() @Inject(APP_CONFIG) config?: AppConfig,
+  ) {
+    this.shared = cache ?? this.memory;
+    this.config = config;
+  }
+
+  private readonly config?: AppConfig;
 
   async liveCategories(
     query: CatalogQuery,
@@ -157,11 +168,18 @@ export class CatalogUseCase {
     streamId: string,
     credentials?: XuiCredentials,
   ): Promise<{ streamId: string; items: XuiEpgEntry[] }> {
-    const streams = await this.xui.getLiveStreams(credentials);
+    const streams = await this.remember('live-streams', credentials, () =>
+      this.xui.getLiveStreams(credentials),
+    );
     if (!streams.some((stream) => stream.id === streamId)) {
       throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.contentNotFound);
     }
-    const items = await this.xui.getShortEpg(streamId, credentials);
+    const items = await this.remember(
+      `epg:${streamId}`,
+      credentials,
+      () => this.xui.getShortEpg(streamId, credentials),
+      this.config?.catalogEpgCacheTtlSeconds ?? 120,
+    );
     return { streamId, items };
   }
 
@@ -180,20 +198,26 @@ export class CatalogUseCase {
     name: string,
     credentials: XuiCredentials | undefined,
     read: () => Promise<T>,
+    ttlSeconds?: number,
   ): Promise<T> {
-    const key = `${credentials?.username ?? 'server'}:${name}`;
-    const found = this.memory.get(key);
-    if (found && Date.now() - found.at < CACHE_MS) {
-      return found.value as T;
+    const scope = `user:${credentials?.username ?? 'server'}`;
+    const key = catalogCacheKey(scope, name);
+    const ttl = ttlSeconds ?? this.config?.catalogCacheTtlSeconds ?? 300;
+
+    const fromMemory = await this.memory.getJson<T>(key);
+    if (fromMemory !== null) {
+      return fromMemory;
     }
+
+    const fromShared = await this.shared.getJson<T>(key);
+    if (fromShared !== null) {
+      await this.memory.setJson(key, fromShared, Math.min(ttl, 60));
+      return fromShared;
+    }
+
     const value = await read();
-    this.memory.set(key, { at: Date.now(), value });
-    if (this.memory.size > 40) {
-      const oldest = [...this.memory.entries()].sort((left, right) => left[1].at - right[1].at)[0];
-      if (oldest) {
-        this.memory.delete(oldest[0]);
-      }
-    }
+    await this.memory.setJson(key, value, Math.min(ttl, 60));
+    await this.shared.setJson(key, value, ttl);
     return value;
   }
 }

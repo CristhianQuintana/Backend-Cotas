@@ -18,6 +18,7 @@ const fictional = {
   SWAGGER_ENABLED: 'false',
   ARGON2_MEMORY_COST: '4096',
   ARGON2_TIME_COST: '1',
+  REDIS_ENABLED: 'false',
 };
 
 for (const [name, value] of Object.entries(fictional)) {

@@ -123,5 +123,22 @@ describe('mapeadores XUI', () => {
     expect(series?.episodes.map((episode) => episode.id)).toEqual(['8', '9']);
     expect(series?.seasons.find((season) => season.number === 0)?.episodeCount).toBe(0);
     expect(mapSeriesInfo({ info: {} }, '4')).toBeNull();
+
+    // Array plano + título vacío + episode_count mentiroso no debe dejar temporadas vacías.
+    const flat = mapSeriesInfo(
+      {
+        info: { name: 'Serie plana', category_id: '2' },
+        seasons: [{ season_number: 0, name: 'Especiales', episode_count: 24 }],
+        episodes: [
+          { id: 101, season: 0, episode_num: 1, container_extension: 'mp4' },
+          { stream_id: '102', season_number: 0, episode_number: 2, info: { title: 'Extra' } },
+        ],
+      },
+      '5',
+    );
+    expect(flat?.episodes).toHaveLength(2);
+    expect(flat?.episodes[0]?.name).toBe('Episodio 1');
+    expect(flat?.episodes[1]?.name).toBe('Extra');
+    expect(flat?.seasons.find((season) => season.number === 0)?.episodeCount).toBe(2);
   });
 });

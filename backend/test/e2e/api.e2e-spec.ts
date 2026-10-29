@@ -207,7 +207,11 @@ describe('API COTAS', () => {
       .get('/api/v1/health/dependencies')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
-    expect(dependencies.body.checks).toEqual({ database: 'up', xui: 'up' });
+    expect(dependencies.body.checks).toEqual({
+      database: 'up',
+      xui: 'up',
+      redis: 'skipped',
+    });
     expect(JSON.stringify(dependencies.body)).not.toContain('xui.test.local');
 
     await http().post('/api/v1/auth/logout').set('Authorization', `Bearer ${token}`).expect(204);

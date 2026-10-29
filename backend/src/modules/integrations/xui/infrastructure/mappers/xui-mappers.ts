@@ -399,22 +399,31 @@ function parseIdList(value: string): unknown[] {
 }
 
 function readEpisodes(value: unknown): XuiEpisode[] {
-  if (!isRecord(value)) {
-    return [];
-  }
   const episodes: XuiEpisode[] = [];
-  for (const [key, season] of Object.entries(value)) {
-    if (!Array.isArray(season)) {
-      continue;
+  const push = (entry: unknown, seasonFromKey: number | null) => {
+    const mapped = mapEpisode(entry, seasonFromKey);
+    if (mapped && !episodes.some((item) => item.id === mapped.id)) {
+      episodes.push(mapped);
     }
-    const seasonNumber = asSeasonNumber(key);
-    for (const entry of season) {
-      const mapped = mapEpisode(entry, seasonNumber);
-      if (mapped && !episodes.some((item) => item.id === mapped.id)) {
-        episodes.push(mapped);
+  };
+
+  // Algunos paneles XUI/Xtream envían un array plano en lugar del mapa por temporada.
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      push(entry, null);
+    }
+  } else if (isRecord(value)) {
+    for (const [key, season] of Object.entries(value)) {
+      if (!Array.isArray(season)) {
+        continue;
+      }
+      const seasonNumber = asSeasonNumber(key);
+      for (const entry of season) {
+        push(entry, seasonNumber);
       }
     }
   }
+
   return episodes.sort(
     (left, right) =>
       left.seasonNumber - right.seasonNumber ||
@@ -426,20 +435,30 @@ function mapEpisode(value: unknown, seasonFromKey: number | null): XuiEpisode | 
   if (!isRecord(value)) {
     return null;
   }
-  const id = asId(value.id) ?? asId(value.stream_id);
-  const name = asName(value.title) ?? asName(value.name);
-  const seasonNumber = asSeasonNumber(value.season) ?? seasonFromKey;
+  const id = asId(value.id) ?? asId(value.stream_id) ?? asId(value.episode_id) ?? asId(value.ep_id);
+  const info = isRecord(value.info) ? value.info : {};
+  const episodeNumber =
+    asSeasonNumber(value.episode_num) ??
+    asSeasonNumber(value.episode_number) ??
+    asSeasonNumber(value.episode);
+  const seasonNumber =
+    asSeasonNumber(value.season) ?? asSeasonNumber(value.season_number) ?? seasonFromKey;
+  const name =
+    asName(value.title) ??
+    asName(value.name) ??
+    asName(info.name) ??
+    asName(info.title) ??
+    (episodeNumber !== null ? `Episodio ${episodeNumber}` : null) ??
+    (id ? `Episodio ${id}` : null);
   if (!id || !name || seasonNumber === null) {
     return null;
   }
-  const info = isRecord(value.info) ? value.info : {};
-  const episodeNumber = asSeasonNumber(value.episode_num);
   return {
     id,
     seasonNumber,
     episodeNumber,
     name,
-    plot: asText(info.plot, 2000),
+    plot: asText(info.plot, 2000) ?? asText(info.description, 2000),
     duration: asDuration(info.duration, info.duration_secs),
     posterUrl: sanitizePublicUrl(info.movie_image) ?? sanitizePublicUrl(info.cover_big),
     extension: asExtension(value.container_extension),
@@ -453,24 +472,32 @@ function readSeasons(value: unknown, episodes: readonly XuiEpisode[]): XuiSeason
       if (!isRecord(entry)) {
         continue;
       }
-      const number = asSeasonNumber(entry.season_number);
+      const number = asSeasonNumber(entry.season_number) ?? asSeasonNumber(entry.season);
       if (number === null || seasons.has(number)) {
         continue;
       }
       const counted = episodes.filter((episode) => episode.seasonNumber === number).length;
+      const reported =
+        typeof entry.episode_count === 'number' && entry.episode_count >= 0
+          ? entry.episode_count
+          : null;
+      // Si ya mapeamos episodios, el conteo real manda (evita "24 episodios" vacíos).
+      const episodeCount = episodes.length > 0 ? counted : (reported ?? counted);
       seasons.set(number, {
         number,
         name: asName(entry.name) ?? seasonLabel(number),
-        episodeCount:
-          typeof entry.episode_count === 'number' && entry.episode_count >= 0
-            ? entry.episode_count
-            : counted,
+        episodeCount,
         posterUrl: sanitizePublicUrl(entry.cover) ?? sanitizePublicUrl(entry.cover_big),
       });
     }
   }
   for (const episode of episodes) {
     if (seasons.has(episode.seasonNumber)) {
+      const current = seasons.get(episode.seasonNumber)!;
+      const counted = episodes.filter((item) => item.seasonNumber === episode.seasonNumber).length;
+      if (current.episodeCount !== counted) {
+        seasons.set(episode.seasonNumber, { ...current, episodeCount: counted });
+      }
       continue;
     }
     seasons.set(episode.seasonNumber, {

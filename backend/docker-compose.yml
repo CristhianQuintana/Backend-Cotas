@@ -1,6 +1,8 @@
-# API y PostgreSQL. El vídeo no pasa por estos contenedores.
-# En el servidor, defina POSTGRES_PASSWORD antes del primer arranque.
+# API, PostgreSQL, Redis y worker de sincronización de catálogo.
+# El vídeo no pasa por estos contenedores.
+# En el servidor, defina POSTGRES_PASSWORD y REDIS_PASSWORD antes del primer arranque.
 # PUBLIC_CORS_ORIGINS debe ser https. El valor por defecto solo sirve para la prueba local del contenedor.
+# No use `docker compose down -v`: el volumen cotas_pg conserva los datos.
 
 services:
   postgres:
@@ -22,6 +24,43 @@ services:
     networks:
       - cotas
 
+  redis:
+    image: redis:7-alpine
+    # Sin publicación de puertos: solo red interna cotas.
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD:-local_only_redis_password}",
+        "--maxmemory",
+        "${REDIS_MAXMEMORY:-256mb}",
+        "--maxmemory-policy",
+        "allkeys-lru",
+        "--save",
+        "60",
+        "1000",
+        "--appendonly",
+        "yes",
+      ]
+    volumes:
+      - cotas_redis:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD:-local_only_redis_password}",
+          "--no-auth-warning",
+          "ping",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - cotas
+
   backend:
     build: .
     image: cotas-backend:local
@@ -29,6 +68,7 @@ services:
       - .env
     environment:
       NODE_ENV: production
+      APP_ROLE: api
       PORT: "3000"
       SWAGGER_ENABLED: "false"
       CORS_ORIGINS: ${PUBLIC_CORS_ORIGINS:-https://localhost}
@@ -37,10 +77,56 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-cotas_dev}
       POSTGRES_HOST: postgres
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-local_only_redis_password}
     ports:
       - "${BACKEND_PORT:-3100}:3000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/health/live').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - cotas
+
+  worker:
+    image: cotas-backend:local
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      APP_ROLE: worker
+      PORT: "3000"
+      SWAGGER_ENABLED: "false"
+      CORS_ORIGINS: ${PUBLIC_CORS_ORIGINS:-https://localhost}
+      POSTGRES_USER: ${POSTGRES_USER:-cotas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_only_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-cotas_dev}
+      POSTGRES_HOST: postgres
+      RUN_MIGRATIONS: "false"
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-local_only_redis_password}
+      CATALOG_SYNC_INTERVAL_MS: ${CATALOG_SYNC_INTERVAL_MS:-300000}
+      CATALOG_SYNC_CONCURRENCY: "1"
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
         condition: service_healthy
     healthcheck:
       test:
@@ -63,3 +149,4 @@ networks:
 
 volumes:
   cotas_pg:
+  cotas_redis:

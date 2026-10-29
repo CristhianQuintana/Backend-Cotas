@@ -30,6 +30,13 @@ export interface AppConfig {
   argon2MemoryCost: number;
   argon2TimeCost: number;
   argon2Parallelism: number;
+  redisEnabled: boolean;
+  redisUrl: string;
+  redisPassword: string | null;
+  catalogCacheTtlSeconds: number;
+  catalogEpgCacheTtlSeconds: number;
+  catalogSyncIntervalMs: number;
+  catalogSyncConcurrency: number;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

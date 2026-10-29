@@ -107,6 +107,46 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
   );
   const argon2Parallelism = integer(raw.ARGON2_PARALLELISM ?? '1', 'ARGON2_PARALLELISM', 1, 4);
 
+  const redisEnabledDefault = nodeEnv === 'test' ? 'false' : 'true';
+  const redisEnabled = bool(raw.REDIS_ENABLED ?? redisEnabledDefault, 'REDIS_ENABLED');
+  const redisUrl = redisEnabled
+    ? pattern(raw.REDIS_URL ?? 'redis://127.0.0.1:6379/0', 'REDIS_URL', /^redis(?:s)?:\/\/.+/u)
+    : raw.REDIS_URL?.trim() || 'redis://127.0.0.1:6379/0';
+  const redisPasswordRaw = raw.REDIS_PASSWORD?.trim() || '';
+  if (
+    redisEnabled &&
+    nodeEnv === 'production' &&
+    (redisPasswordRaw.length === 0 || redisPasswordRaw.includes(PLACEHOLDER))
+  ) {
+    fail('REDIS_PASSWORD');
+  }
+  const redisPassword = redisPasswordRaw.length > 0 ? redisPasswordRaw : null;
+
+  const catalogCacheTtlSeconds = integer(
+    raw.CATALOG_CACHE_TTL_SECONDS ?? '300',
+    'CATALOG_CACHE_TTL_SECONDS',
+    30,
+    86_400,
+  );
+  const catalogEpgCacheTtlSeconds = integer(
+    raw.CATALOG_EPG_CACHE_TTL_SECONDS ?? '120',
+    'CATALOG_EPG_CACHE_TTL_SECONDS',
+    30,
+    3_600,
+  );
+  const catalogSyncIntervalMs = integer(
+    raw.CATALOG_SYNC_INTERVAL_MS ?? '300000',
+    'CATALOG_SYNC_INTERVAL_MS',
+    60_000,
+    3_600_000,
+  );
+  const catalogSyncConcurrency = integer(
+    raw.CATALOG_SYNC_CONCURRENCY ?? '1',
+    'CATALOG_SYNC_CONCURRENCY',
+    1,
+    4,
+  );
+
   return {
     nodeEnv,
     port,
@@ -136,6 +176,13 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     argon2MemoryCost,
     argon2TimeCost,
     argon2Parallelism,
+    redisEnabled,
+    redisUrl,
+    redisPassword,
+    catalogCacheTtlSeconds,
+    catalogEpgCacheTtlSeconds,
+    catalogSyncIntervalMs,
+    catalogSyncConcurrency,
   };
 }
 
