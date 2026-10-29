@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 
@@ -44,4 +44,30 @@ export class SeriesIdParamDto {
 export class SeasonParamDto extends SeriesIdParamDto {
   @Matches(/^[0-9]{1,3}$/u)
   seasonNumber!: string;
+}
+
+export class EpgQueryDto {
+  @ApiPropertyOptional({
+    default: 12,
+    minimum: 1,
+    maximum: 50,
+    description: 'Máximo de programas a pedir a XUI para este canal.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+}
+
+export class EpgBatchQueryDto extends EpgQueryDto {
+  @ApiProperty({
+    example: '101,102,103',
+    description: 'Hasta 20 streamId separados por coma.',
+  })
+  @IsString()
+  @MaxLength(260)
+  @Matches(/^[0-9]{1,12}(,[0-9]{1,12}){0,19}$/u)
+  streamIds!: string;
 }

@@ -82,8 +82,17 @@ export class FakeXui implements XuiClient {
     return this.answer(details);
   }
 
-  getShortEpg(streamId: string): Promise<XuiEpgEntry[]> {
-    return this.answer(this.epg.get(streamId) ?? []);
+  getShortEpg(
+    streamId: string,
+    _credentials?: XuiCredentials,
+    options?: { limit?: number },
+  ): Promise<XuiEpgEntry[]> {
+    const items = this.epg.get(streamId) ?? [];
+    const limit = options?.limit;
+    if (limit === undefined) {
+      return this.answer(items);
+    }
+    return this.answer(items.slice(0, Math.max(1, Math.min(limit, 50))));
   }
 
   getServerInfo(): Promise<XuiServerInfo> {

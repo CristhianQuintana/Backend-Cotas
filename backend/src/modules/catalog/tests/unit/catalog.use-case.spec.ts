@@ -14,8 +14,16 @@ describe('CatalogUseCase', () => {
     const page = await catalog.liveStreams({ page: 1, limit: 1, categoryId: '2' });
     expect(page.total).toBe(1);
     expect(page.items[0]?.name).toBe('Alfa');
-    await expect(catalog.shortEpg('1')).resolves.toEqual({ streamId: '1', items: [] });
+    await expect(catalog.shortEpg('1')).resolves.toMatchObject({
+      streamId: '1',
+      now: null,
+      next: null,
+      items: [],
+    });
     await expect(catalog.shortEpg('999')).rejects.toBeInstanceOf(DomainError);
+    const batch = await catalog.shortEpgBatch(['1', '999']);
+    expect(batch.channels).toHaveLength(1);
+    expect(batch.channels[0]?.streamId).toBe('1');
   });
 
   it('no trata un catálogo vacío con línea inválida como éxito', async () => {

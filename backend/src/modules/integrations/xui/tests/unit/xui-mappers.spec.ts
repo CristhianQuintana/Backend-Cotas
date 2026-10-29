@@ -43,9 +43,21 @@ describe('mapeadores XUI', () => {
     expect(mapShortEpg({ epg_listings: [] })).toEqual([]);
     const title = Buffer.from('Noticias demo', 'utf8').toString('base64');
     const [item] = mapShortEpg({
-      epg_listings: [{ id: '9', title, description: '', start: '2026-10-19 12:00:00' }],
+      epg_listings: [
+        {
+          id: '9',
+          title,
+          description: '',
+          start: '2026-10-19 12:00:00',
+          end: '2026-10-19 13:00:00',
+          start_timestamp: 1_729_335_600,
+          stop_timestamp: 1_729_339_200,
+        },
+      ],
     });
     expect(item?.title).toBe('Noticias demo');
+    expect(item?.startAt).toBe('2024-10-19T11:00:00.000Z');
+    expect(item?.endAt).toBe('2024-10-19T12:00:00.000Z');
   });
 
   it('rechaza autenticación fallida y no copia la contraseña de la línea', () => {

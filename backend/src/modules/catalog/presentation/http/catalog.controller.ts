@@ -6,6 +6,8 @@ import { LINE_ACCESS, type LineAccess } from '../../../identity/domain/ports/ide
 import { CatalogUseCase } from '../../application/catalog.use-case';
 import {
   CatalogQueryDto,
+  EpgBatchQueryDto,
+  EpgQueryDto,
   SeasonParamDto,
   SeriesIdParamDto,
   StreamIdParamDto,
@@ -80,10 +82,21 @@ export class CatalogController {
     return this.catalog.episodes(params.seriesId, Number(params.seasonNumber), credentials);
   }
 
-  @Get('live/streams/:streamId/epg')
-  async epg(@CurrentUser() user: AuthenticatedUser, @Param() params: StreamIdParamDto) {
+  @Get('live/epg')
+  async epgBatch(@CurrentUser() user: AuthenticatedUser, @Query() query: EpgBatchQueryDto) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.shortEpg(params.streamId, credentials);
+    const streamIds = query.streamIds.split(',').map((id) => id.trim());
+    return this.catalog.shortEpgBatch(streamIds, credentials, query.limit ?? 12);
+  }
+
+  @Get('live/streams/:streamId/epg')
+  async epg(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: StreamIdParamDto,
+    @Query() query: EpgQueryDto,
+  ) {
+    const credentials = await this.lines.credentialsFor(user.id);
+    return this.catalog.shortEpg(params.streamId, credentials, query.limit ?? 12);
   }
 }
 

@@ -7,3 +7,5 @@ El caso de uso entrega identificadores de texto numérico, nombres, categorías 
 La paginación usa `page` y `limit`. El límite máximo es 50. `total` es el tamaño de la lista ya filtrada, no un cupo fijo. `categoryId` filtra por el identificador de XUI. `search` es opcional y corto.
 
 La memoria de 60 segundos evita repetir la misma consulta al pasar de página. La clave incluye el usuario de la línea y no la contraseña. No sobrevive a un reinicio.
+
+La EPG de canales en vivo está documentada para las plataformas en `epg.md` (`GET .../live/streams/{id}/epg` y `GET .../live/epg`).

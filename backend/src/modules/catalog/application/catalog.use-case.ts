@@ -7,7 +7,6 @@ import {
   type XuiCategory,
   type XuiClient,
   type XuiCredentials,
-  type XuiEpgEntry,
   type XuiEpisode,
   type XuiLiveStream,
   type XuiSeason,
@@ -18,6 +17,7 @@ import {
 } from '../../integrations/xui/domain/models';
 import { CATALOG_CACHE, catalogCacheKey, type CatalogCache } from '../domain/catalog-cache';
 import { MemoryCatalogCache } from '../infrastructure/redis-catalog.cache';
+import { presentChannelEpg } from './epg.presenter';
 
 export interface CatalogQuery {
   page: number;
@@ -167,20 +167,62 @@ export class CatalogUseCase {
   async shortEpg(
     streamId: string,
     credentials?: XuiCredentials,
-  ): Promise<{ streamId: string; items: XuiEpgEntry[] }> {
+    limit = 12,
+  ): Promise<ReturnType<typeof presentChannelEpg>> {
+    const safeLimit = Math.max(1, Math.min(Math.trunc(limit), 50));
+    await this.requireLiveStream(streamId, credentials);
+    const items = await this.remember(
+      `epg:${streamId}:l${safeLimit}`,
+      credentials,
+      () => this.xui.getShortEpg(streamId, credentials, { limit: safeLimit }),
+      this.config?.catalogEpgCacheTtlSeconds ?? 120,
+    );
+    return presentChannelEpg(streamId, items);
+  }
+
+  async shortEpgBatch(
+    streamIds: string[],
+    credentials?: XuiCredentials,
+    limit = 12,
+  ): Promise<{ generatedAt: string; channels: ReturnType<typeof presentChannelEpg>[] }> {
+    const unique = [...new Set(streamIds)].slice(0, 20);
+    if (unique.length === 0) {
+      return { generatedAt: new Date().toISOString(), channels: [] };
+    }
+    const streams = await this.remember('live-streams', credentials, () =>
+      this.xui.getLiveStreams(credentials),
+    );
+    const allowed = new Set(streams.map((stream) => stream.id));
+    const channels: ReturnType<typeof presentChannelEpg>[] = [];
+    // Concurrencia baja para no saturar XUI cuando la guía pide varios canales.
+    const queue = [...unique];
+    const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const streamId = queue.shift();
+        if (!streamId) {
+          return;
+        }
+        if (!allowed.has(streamId)) {
+          continue;
+        }
+        channels.push(await this.shortEpg(streamId, credentials, limit));
+      }
+    });
+    await Promise.all(workers);
+    channels.sort((left, right) => left.streamId.localeCompare(right.streamId, 'en'));
+    return { generatedAt: new Date().toISOString(), channels };
+  }
+
+  private async requireLiveStream(
+    streamId: string,
+    credentials?: XuiCredentials,
+  ): Promise<void> {
     const streams = await this.remember('live-streams', credentials, () =>
       this.xui.getLiveStreams(credentials),
     );
     if (!streams.some((stream) => stream.id === streamId)) {
       throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.contentNotFound);
     }
-    const items = await this.remember(
-      `epg:${streamId}`,
-      credentials,
-      () => this.xui.getShortEpg(streamId, credentials),
-      this.config?.catalogEpgCacheTtlSeconds ?? 120,
-    );
-    return { streamId, items };
   }
 
   private async whenAuthenticated<T>(items: T[], credentials?: XuiCredentials): Promise<T[]> {

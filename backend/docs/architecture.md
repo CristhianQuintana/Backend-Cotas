@@ -5,7 +5,7 @@ El backend es un monolito modular NestJS. La API pública vive bajo `/api/v1`. P
 ## Módulos
 
 - `identity`: login con la línea XUI, refresh, logout, perfil, sesiones y enrolamiento TOTP del operador.
-- `catalog`: canales en vivo, películas, series, temporadas, episodios y EPG corto. Se leen de XUI y se paginan en memoria.
+- `catalog`: canales en vivo, películas, series, temporadas, episodios y EPG (corto por canal y por lotes, con `now`/`next` e ISO). Se leen de XUI; detalle en `docs/integraciones/epg.md`.
 - `playback`: autoriza un contenido que existe en el catálogo de esa línea y devuelve la referencia directa.
 - `integrations/xui`: único lugar que conoce `player_api.php`, los tiempos de espera y el formato de las referencias.
 - `audit`: consulta de eventos para el rol `OPERATOR`.

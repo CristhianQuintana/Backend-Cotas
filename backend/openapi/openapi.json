@@ -219,6 +219,146 @@
         ]
       }
     },
+    "/api/v1/admin/users": {
+      "get": {
+        "operationId": "AdminUsersController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin-users"
+        ]
+      },
+      "post": {
+        "operationId": "AdminUsersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}": {
+      "get": {
+        "operationId": "AdminUsersController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin-users"
+        ]
+      },
+      "patch": {
+        "operationId": "AdminUsersController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAdminUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{id}/password": {
+      "post": {
+        "operationId": "AdminUsersController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetAdminUserPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "admin-users"
+        ]
+      }
+    },
     "/api/v1/catalog/live/categories": {
       "get": {
         "operationId": "CatalogController_liveCategories",
@@ -658,6 +798,48 @@
         ]
       }
     },
+    "/api/v1/catalog/live/epg": {
+      "get": {
+        "operationId": "CatalogController_epgBatch",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Máximo de programas a pedir a XUI para este canal.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
+            }
+          },
+          {
+            "name": "streamIds",
+            "required": true,
+            "in": "query",
+            "description": "Hasta 20 streamId separados por coma.",
+            "schema": {
+              "example": "101,102,103",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/live/streams/{streamId}/epg": {
       "get": {
         "operationId": "CatalogController_epg",
@@ -668,6 +850,18 @@
             "in": "path",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Máximo de programas a pedir a XUI para este canal.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 12,
+              "type": "number"
             }
           }
         ],
@@ -820,6 +1014,78 @@
         },
         "required": [
           "totpCode"
+        ]
+      },
+      "CreateAdminUserDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "example": "operador"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 128
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "CUSTOMER",
+              "OPERATOR",
+              "ADMIN"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACTIVE",
+              "SUSPENDED",
+              "DISABLED"
+            ],
+            "default": "ACTIVE"
+          }
+        },
+        "required": [
+          "username",
+          "password",
+          "role"
+        ]
+      },
+      "UpdateAdminUserDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACTIVE",
+              "SUSPENDED",
+              "DISABLED"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "CUSTOMER",
+              "OPERATOR",
+              "ADMIN"
+            ]
+          }
+        }
+      },
+      "ResetAdminUserPasswordDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "password"
         ]
       },
       "AuthorizePlaybackDto": {

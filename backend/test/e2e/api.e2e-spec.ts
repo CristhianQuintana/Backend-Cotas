@@ -133,11 +133,24 @@ describe('API COTAS', () => {
     expect(streams.body.items[0].name).toBe('Canal Demo');
     expect(JSON.stringify(streams.body)).not.toContain('xui_test_password_not_real');
 
-    await http()
+    const epg = await http()
       .get('/api/v1/catalog/live/streams/1001/epg')
       .set('Authorization', `Bearer ${token}`)
-      .expect(200)
-      .expect({ streamId: '1001', items: [] });
+      .expect(200);
+    expect(epg.body).toMatchObject({
+      streamId: '1001',
+      now: null,
+      next: null,
+      items: [],
+    });
+    expect(typeof epg.body.generatedAt).toBe('string');
+
+    const batch = await http()
+      .get('/api/v1/catalog/live/epg?streamIds=1001,404&limit=4')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(batch.body.channels).toHaveLength(1);
+    expect(batch.body.channels[0].streamId).toBe('1001');
 
     const playback = await http()
       .post('/api/v1/playback/authorizations')

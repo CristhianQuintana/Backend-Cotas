@@ -85,8 +85,14 @@ export interface XuiEpgEntry {
   id: string;
   title: string;
   description: string | null;
+  /** Hora de inicio tal como la entrega XUI (texto o vacío). */
   start: string | null;
+  /** Hora de fin tal como la entrega XUI (texto o vacío). */
   end: string | null;
+  /** Inicio en ISO-8601 UTC cuando se puede derivar; si no, null. */
+  startAt: string | null;
+  /** Fin en ISO-8601 UTC cuando se puede derivar; si no, null. */
+  endAt: string | null;
 }
 
 export interface XuiLineStatus {
@@ -118,6 +124,10 @@ export interface XuiClient {
   getSeriesCategories(credentials?: XuiCredentials): Promise<XuiCategory[]>;
   getSeries(credentials?: XuiCredentials): Promise<XuiSeriesSummary[]>;
   getSeriesInfo(seriesId: string, credentials?: XuiCredentials): Promise<XuiSeriesDetails>;
-  getShortEpg(streamId: string, credentials?: XuiCredentials): Promise<XuiEpgEntry[]>;
+  getShortEpg(
+    streamId: string,
+    credentials?: XuiCredentials,
+    options?: { limit?: number },
+  ): Promise<XuiEpgEntry[]>;
   getServerInfo(credentials?: XuiCredentials): Promise<XuiServerInfo>;
 }

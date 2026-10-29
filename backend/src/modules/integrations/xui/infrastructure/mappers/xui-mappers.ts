@@ -233,13 +233,50 @@ function mapEpg(value: unknown): XuiEpgEntry | null {
     return null;
   }
   const id = asId(value.id) ?? asName(value.id) ?? title.slice(0, 40);
+  const start = asName(value.start) ?? asName(value.start_time);
+  const end = asName(value.end) ?? asName(value.end_time) ?? asName(value.stop);
+  const startAt =
+    asIsoFromUnix(value.start_timestamp) ??
+    asIsoFromUnix(value.start) ??
+    asIsoFromDateText(start);
+  const endAt =
+    asIsoFromUnix(value.stop_timestamp) ??
+    asIsoFromUnix(value.end_timestamp) ??
+    asIsoFromUnix(value.end) ??
+    asIsoFromDateText(end);
   return {
     id: id.slice(0, 64),
     title: title.slice(0, 200),
     description: decodePossibleBase64(value.description)?.slice(0, 500) ?? null,
-    start: asName(value.start),
-    end: asName(value.end),
+    start,
+    end,
+    startAt,
+    endAt,
   };
+}
+
+function asIsoFromUnix(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 1_000_000_000) {
+    const ms = value > 1_000_000_000_000 ? value : value * 1000;
+    const date = new Date(ms);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  if (typeof value === 'string' && /^[0-9]{10,13}$/u.test(value.trim())) {
+    return asIsoFromUnix(Number(value.trim()));
+  }
+  return null;
+}
+
+function asIsoFromDateText(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  // XUI suele enviar "YYYY-MM-DD HH:mm:ss" sin zona; se interpreta como UTC civil.
+  const normalized = value.includes('T')
+    ? value
+    : value.replace(' ', 'T') + (value.endsWith('Z') ? '' : 'Z');
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function readArray(payload: unknown): unknown[] {
