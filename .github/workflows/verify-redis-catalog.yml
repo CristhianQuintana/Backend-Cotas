@@ -1,0 +1,73 @@
+name: verify-redis-catalog
+
+# Comprueba Redis, worker y caché de catálogo en el servidor de pruebas.
+# No imprime secretos ni contraseñas.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-redis-pruebas
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Contenedores y Redis
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+        run: |
+          set -eu
+          cd "$COMPOSE_DIR"
+          ln -sfn "$ENV_FILE" .env
+          docker compose ps
+          redis_pass=$(grep -E '^REDIS_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          if [ -z "$redis_pass" ]; then
+            echo "REDIS_PASSWORD ausente." >&2
+            exit 1
+          fi
+          docker compose exec -T redis redis-cli -a "$redis_pass" --no-auth-warning ping | grep -q PONG
+          echo "Redis PONG OK"
+          docker compose logs --tail=40 worker
+          docker compose logs --tail=20 backend | grep -Ei 'redis|cache|catalog' || true
+      - name: Salud API y dependencias
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          SEED_ADMIN_USERNAME: operador
+          SEED_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: |
+          set -eu
+          api_port=$(grep -E '^BACKEND_PORT=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          api_port=${api_port:-3100}
+          base="http://127.0.0.1:${api_port}"
+          curl -sS -f "${base}/api/v1/health/live" >/dev/null
+          curl -sS -f "${base}/api/v1/health/ready" >/dev/null
+          if [ -z "${SEED_ADMIN_PASSWORD:-}" ]; then
+            echo "Sin BOOTSTRAP_ADMIN_PASSWORD: se omite dependencies autenticado."
+            exit 0
+          fi
+          body=$(mktemp)
+          resp=$(mktemp)
+          trap 'rm -f "$body" "$resp"' EXIT
+          BODY_FILE="$body" python3 -c 'import json,os; json.dump({"username":os.environ["SEED_ADMIN_USERNAME"],"password":os.environ["SEED_ADMIN_PASSWORD"]}, open(os.environ["BODY_FILE"],"w"), separators=(",",":"))'
+          code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST "${base}/api/v1/auth/login" -H 'content-type: application/json' --data-binary @"$body")
+          if [ "$code" != "200" ]; then
+            echo "Login falló HTTP ${code}" >&2
+            exit 1
+          fi
+          token=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["accessToken"])' "$resp")
+          deps=$(curl -sS -H "Authorization: Bearer ${token}" "${base}/api/v1/health/dependencies")
+          echo "$deps" | python3 -c 'import json,sys; d=json.load(sys.stdin); c=d.get("checks",{}); assert c.get("redis")=="up", c; assert c.get("database")=="up", c; print("dependencies OK:", c)'
+          # Latencia catálogo (dos GET; el segundo debería ser más rápido si hay caché)
+          t1=$(curl -sS -o /dev/null -w '%{time_total}' -H "Authorization: Bearer ${token}" "${base}/api/v1/catalog/live/categories")
+          t2=$(curl -sS -o /dev/null -w '%{time_total}' -H "Authorization: Bearer ${token}" "${base}/api/v1/catalog/live/categories")
+          echo "latencia live/categories 1=${t1}s 2=${t2}s"
+          keys=$(docker compose -f "${{ github.workspace }}/backend/docker-compose.yml" --project-directory "${{ github.workspace }}/backend" exec -T redis redis-cli -a "$(grep -E '^REDIS_PASSWORD=' /opt/cotas/env/.env | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")" --no-auth-warning KEYS 'cotas:catalog:v1:*' | wc -l)
+          echo "claves de catálogo en Redis: ${keys}"
