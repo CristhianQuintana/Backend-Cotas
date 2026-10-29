@@ -58,3 +58,12 @@ Como operador autenticado, `GET /api/v1/health/dependencies` debe mostrar `redis
 | Fallo Redis | N/A | API degradada pero operativa vía XUI |
 
 Una prueba manual típica: dos `GET` seguidos a `/api/v1/catalog/live/streams` con la misma línea; el segundo no debe volver a esperar ~7–10 s de XUI si la caché está caliente.
+
+## Evidencia en pruebas (SHA `57108a2`)
+
+Despliegue automático del 29/10/2026 en `10.10.0.31`:
+
+- `docker compose` levantó `postgres` (volumen `cotas_pg` conservado), `redis` (volumen `cotas_redis` nuevo), `backend` y `worker` (misma imagen).
+- Healthchecks: `redis` healthy, `backend` healthy, `worker` arrancado; script `server-deploy.sh` terminó con «Despliegue correcto».
+- Comprobación desde la LAN: `GET /api/v1/health/live` → 200; `GET /api/v1/health/ready` → 200 (`database: up`); catálogo anónimo → 401.
+- Workflow opcional `verify-redis-catalog` (Actions → Run workflow) hace ping a Redis, muestra logs del worker y mide latencia de dos GET autenticados a categorías.
