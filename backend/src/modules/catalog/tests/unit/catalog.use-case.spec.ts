@@ -26,6 +26,54 @@ describe('CatalogUseCase', () => {
     expect(batch.channels[0]?.streamId).toBe('1');
   });
 
+  it('busca programas en la guía y pagina resultados', async () => {
+    const xui = new FakeXui();
+    xui.liveStreams = [
+      { id: '1', name: 'Canal A', categoryId: '1', iconUrl: null, epgChannelId: 'epg-a' },
+      { id: '2', name: 'Canal B', categoryId: '1', iconUrl: null, epgChannelId: null },
+    ];
+    xui.epg.set('1', [
+      {
+        id: 'p1',
+        title: 'Noticias del mediodía',
+        description: 'Resumen nacional',
+        start: null,
+        end: null,
+        startAt: '2099-01-01T12:00:00.000Z',
+        endAt: '2099-01-01T13:00:00.000Z',
+      },
+      {
+        id: 'p2',
+        title: 'Deportes',
+        description: null,
+        start: null,
+        end: null,
+        startAt: '2099-01-01T13:00:00.000Z',
+        endAt: '2099-01-01T14:00:00.000Z',
+      },
+    ]);
+    xui.epg.set('2', [
+      {
+        id: 'p3',
+        title: 'Noticias noche',
+        description: null,
+        start: null,
+        end: null,
+        startAt: '2099-01-01T22:00:00.000Z',
+        endAt: '2099-01-01T23:00:00.000Z',
+      },
+    ]);
+    const catalog = new CatalogUseCase(xui);
+    const page = await catalog.searchEpg({ q: 'noticias', page: 1, limit: 10 });
+    expect(page.total).toBe(2);
+    expect(page.items.map((item) => item.programId).sort()).toEqual(['p1', 'p3']);
+    expect(page.items[0]?.channelName).toBeTruthy();
+    expect(page.timezone).toBe('America/Lima');
+    const empty = await catalog.searchEpg({ q: 'xyznoexiste', page: 1, limit: 10 });
+    expect(empty.total).toBe(0);
+    expect(empty.items).toEqual([]);
+  });
+
   it('no trata un catálogo vacío con línea inválida como éxito', async () => {
     const xui = new FakeXui();
     xui.line = { authenticated: false, status: null };

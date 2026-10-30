@@ -152,6 +152,18 @@ describe('API COTAS', () => {
     expect(batch.body.channels).toHaveLength(1);
     expect(batch.body.channels[0].streamId).toBe('1001');
 
+    const search = await http()
+      .get('/api/v1/catalog/live/epg/search?q=ningunprogramademoe2e&page=1&limit=10')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(search.body.total).toBe(0);
+    expect(search.body.items).toEqual([]);
+    expect(search.body.timezone).toBe('America/Lima');
+    await http()
+      .get('/api/v1/catalog/live/epg/search?q=a')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+
     const playback = await http()
       .post('/api/v1/playback/authorizations')
       .set('Authorization', `Bearer ${token}`)

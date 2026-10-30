@@ -8,6 +8,7 @@ import {
   CatalogQueryDto,
   EpgBatchQueryDto,
   EpgQueryDto,
+  EpgSearchQueryDto,
   SeasonParamDto,
   SeriesIdParamDto,
   StreamIdParamDto,
@@ -80,6 +81,19 @@ export class CatalogController {
   async episodes(@CurrentUser() user: AuthenticatedUser, @Param() params: SeasonParamDto) {
     const credentials = await this.lines.credentialsFor(user.id);
     return this.catalog.episodes(params.seriesId, Number(params.seasonNumber), credentials);
+  }
+
+  @Get('live/epg/search')
+  async epgSearch(@CurrentUser() user: AuthenticatedUser, @Query() query: EpgSearchQueryDto) {
+    const credentials = await this.lines.credentialsFor(user.id);
+    return this.catalog.searchEpg(
+      {
+        q: query.q,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
+      credentials,
+    );
   }
 
   @Get('live/epg')

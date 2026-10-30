@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CatalogQueryDto {
   @ApiPropertyOptional({ default: 1, minimum: 1 })
@@ -70,4 +79,27 @@ export class EpgBatchQueryDto extends EpgQueryDto {
   @MaxLength(260)
   @Matches(/^[0-9]{1,12}(,[0-9]{1,12}){0,19}$/u)
   streamIds!: string;
+}
+
+export class EpgSearchQueryDto {
+  @ApiProperty({ example: 'noticias', description: 'Texto a buscar en título o descripción.' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(80)
+  q!: string;
+
+  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
 }

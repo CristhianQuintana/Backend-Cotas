@@ -66,7 +66,61 @@ GET /api/v1/catalog/live/streams/{streamId}/epg?limit=12
 
 `now` o `next` pueden ser `null`. Lista vacía con canal válido → `200` (sin inventar programas). Canal inexistente → `404`.
 
-### 2. EPG por lotes (rejilla de guía)
+### 2. Búsqueda global de programas
+
+Usado por Samsung (modo **Programas**) y demás clientes.
+
+```http
+GET /api/v1/catalog/live/epg/search?q=noticias&page=1&limit=20
+```
+
+| Parámetro | Obligatorio | Descripción |
+| --- | --- | --- |
+| `q` | Sí | Texto (mín. 2 caracteres) sobre título o descripción |
+| `page` | No | Página (por defecto 1) |
+| `limit` | No | 1–50 (por defecto 20) |
+
+**Respuesta 200**
+
+```json
+{
+  "page": 1,
+  "limit": 20,
+  "total": 2,
+  "totalPages": 1,
+  "query": "noticias",
+  "timezone": "America/Lima",
+  "generatedAt": "2026-10-30T20:00:00.000Z",
+  "items": [
+    {
+      "programId": "9",
+      "title": "Noticias mediodía",
+      "description": "Resumen",
+      "streamId": "101",
+      "channelName": "Canal Demo",
+      "channelIconUrl": null,
+      "startAt": "2026-10-30T17:00:00.000Z",
+      "endAt": "2026-10-30T18:00:00.000Z",
+      "startLocal": "30/10/2026 12:00",
+      "endLocal": "30/10/2026 13:00",
+      "status": "live",
+      "statusLabel": "en emisión"
+    }
+  ]
+}
+```
+
+| `status` | `statusLabel` |
+| --- | --- |
+| `live` | en emisión |
+| `upcoming` | próximo |
+| `ended` | finalizado |
+
+Sin coincidencias → `200` con `total: 0` e `items: []` (la UI muestra *No encontramos ese programa en la guía disponible.*). Al pulsar un resultado, abrir el canal con `streamId` (ficha / EPG del canal).
+
+El backend sondea hasta ~80 canales (prioriza los que tienen `epgChannelId`), con caché Redis/memoria, sin que la app llame a XUI.
+
+### 3. EPG por lotes (rejilla de guía)
 
 ```http
 GET /api/v1/catalog/live/epg?streamIds=101,102,103&limit=8
@@ -96,7 +150,7 @@ GET /api/v1/catalog/live/epg?streamIds=101,102,103&limit=8
 
 Los ids que el abonado no tiene en su lista de canales se omiten (no fallan el lote). El backend limita la concurrencia hacia XUI.
 
-### 3. Cómo armar la guía completa
+### 4. Cómo armar la guía completa
 
 Flujo recomendado en todas las plataformas:
 
@@ -104,7 +158,8 @@ Flujo recomendado en todas las plataformas:
 2. `GET /api/v1/catalog/live/streams?categoryId=...&page=1&limit=50` → filas de canales (`id`, `name`, `iconUrl`, `epgChannelId`).
 3. Para la rejilla visible: `GET /api/v1/catalog/live/epg?streamIds=<ids visibles>&limit=8`.
 4. Al enfocar un canal: `GET /api/v1/catalog/live/streams/{id}/epg?limit=24` para más detalle.
-5. Refresco: cada 1–2 minutos o al cambiar de categoría; respetar caché del servidor (TTL ~2 min).
+5. Modo **Programas**: `GET /api/v1/catalog/live/epg/search?q=...&page=1&limit=20` (debounce en cliente).
+6. Refresco: cada 1–2 minutos o al cambiar de categoría; respetar caché del servidor (TTL ~2 min).
 
 No descargue EPG de **todos** los canales de una vez: pagine por categoría y solo pida los ids en pantalla (+ margen).
 

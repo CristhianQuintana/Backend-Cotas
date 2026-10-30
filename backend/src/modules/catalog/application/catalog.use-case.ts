@@ -17,7 +17,13 @@ import {
 } from '../../integrations/xui/domain/models';
 import { CATALOG_CACHE, catalogCacheKey, type CatalogCache } from '../domain/catalog-cache';
 import { MemoryCatalogCache } from '../infrastructure/redis-catalog.cache';
-import { presentChannelEpg } from './epg.presenter';
+import { presentChannelEpg, sortSearchHits, toSearchHit, type EpgSearchHit } from './epg.presenter';
+
+/** Tope de canales a sondear en una búsqueda global (evita saturar XUI). */
+const EPG_SEARCH_MAX_CHANNELS = 80;
+/** Programas por canal al indexar la búsqueda. */
+const EPG_SEARCH_PROGRAMS_PER_CHANNEL = 12;
+const EPG_SEARCH_CONCURRENCY = 4;
 
 export interface CatalogQuery {
   page: number;
@@ -211,6 +217,85 @@ export class CatalogUseCase {
     await Promise.all(workers);
     channels.sort((left, right) => left.streamId.localeCompare(right.streamId, 'en'));
     return { generatedAt: new Date().toISOString(), channels };
+  }
+
+  async searchEpg(
+    query: { q: string; page: number; limit: number },
+    credentials?: XuiCredentials,
+  ): Promise<Page<EpgSearchHit> & { query: string; timezone: string; generatedAt: string }> {
+    const needle = query.q.trim().toLocaleLowerCase('es');
+    const page = Math.max(1, query.page);
+    const limit = Math.max(1, Math.min(query.limit, 50));
+    const generatedAt = new Date().toISOString();
+    const empty = {
+      ...paginate<EpgSearchHit>([], page, limit),
+      query: query.q.trim(),
+      timezone: 'America/Lima',
+      generatedAt,
+    };
+    if (needle.length < 2) {
+      return empty;
+    }
+
+    const streams = await this.remember('live-streams', credentials, () =>
+      this.xui.getLiveStreams(credentials),
+    );
+    await this.whenAuthenticated(streams, credentials);
+
+    // Prioriza canales con EPG asignado en XUI; completa con el resto hasta el tope.
+    const withEpg = streams.filter((stream) => Boolean(stream.epgChannelId));
+    const withoutEpg = streams.filter((stream) => !stream.epgChannelId);
+    const candidates = [...withEpg, ...withoutEpg].slice(0, EPG_SEARCH_MAX_CHANNELS);
+
+    const hits: EpgSearchHit[] = [];
+    const at = new Date();
+    const queue = [...candidates];
+    const workers = Array.from(
+      { length: Math.min(EPG_SEARCH_CONCURRENCY, queue.length) },
+      async () => {
+        while (queue.length > 0) {
+          const stream = queue.shift();
+          if (!stream) {
+            return;
+          }
+          try {
+            const items = await this.remember(
+              `epg:${stream.id}:l${EPG_SEARCH_PROGRAMS_PER_CHANNEL}`,
+              credentials,
+              () =>
+                this.xui.getShortEpg(stream.id, credentials, {
+                  limit: EPG_SEARCH_PROGRAMS_PER_CHANNEL,
+                }),
+              this.config?.catalogEpgCacheTtlSeconds ?? 120,
+            );
+            for (const entry of items) {
+              const haystack = `${entry.title} ${entry.description ?? ''}`.toLocaleLowerCase('es');
+              if (!haystack.includes(needle)) {
+                continue;
+              }
+              hits.push(
+                toSearchHit(
+                  entry,
+                  { id: stream.id, name: stream.name, iconUrl: stream.iconUrl },
+                  at,
+                ),
+              );
+            }
+          } catch {
+            // Un canal sin EPG o con fallo puntual no tumba la búsqueda global.
+          }
+        }
+      },
+    );
+    await Promise.all(workers);
+
+    const pageResult = paginate(sortSearchHits(hits), page, limit);
+    return {
+      ...pageResult,
+      query: query.q.trim(),
+      timezone: 'America/Lima',
+      generatedAt,
+    };
   }
 
   private async requireLiveStream(streamId: string, credentials?: XuiCredentials): Promise<void> {

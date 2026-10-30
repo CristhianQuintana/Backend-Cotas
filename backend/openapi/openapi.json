@@ -798,6 +798,57 @@
         ]
       }
     },
+    "/api/v1/catalog/live/epg/search": {
+      "get": {
+        "operationId": "CatalogController_epgSearch",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "description": "Texto a buscar en título o descripción.",
+            "schema": {
+              "example": "noticias",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/live/epg": {
       "get": {
         "operationId": "CatalogController_epgBatch",
@@ -906,6 +957,20 @@
         ],
         "tags": [
           "playback"
+        ]
+      }
+    },
+    "/api/v1/media/asset": {
+      "get": {
+        "operationId": "MediaController_asset",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "media"
         ]
       }
     },

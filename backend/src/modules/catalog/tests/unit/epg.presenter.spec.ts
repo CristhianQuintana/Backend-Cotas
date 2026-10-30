@@ -1,4 +1,9 @@
-import { presentChannelEpg } from '../../application/epg.presenter';
+import {
+  presentChannelEpg,
+  programStatus,
+  sortSearchHits,
+  toSearchHit,
+} from '../../application/epg.presenter';
 import type { XuiEpgEntry } from '../../../integrations/xui/domain/models';
 
 function entry(partial: Partial<XuiEpgEntry> & Pick<XuiEpgEntry, 'id' | 'title'>): XuiEpgEntry {
@@ -52,5 +57,39 @@ describe('presentChannelEpg', () => {
     ]);
     expect(guide.now?.id).toBe('a');
     expect(guide.next?.id).toBe('b');
+  });
+
+  it('calcula estado y ordena hits de búsqueda', () => {
+    const at = new Date('2026-10-30T15:30:00.000Z');
+    const live = entry({
+      id: '2',
+      title: 'Ahora',
+      startAt: '2026-10-30T15:00:00.000Z',
+      endAt: '2026-10-30T16:00:00.000Z',
+    });
+    const upcoming = entry({
+      id: '3',
+      title: 'Luego',
+      startAt: '2026-10-30T16:00:00.000Z',
+      endAt: '2026-10-30T17:00:00.000Z',
+    });
+    const ended = entry({
+      id: '1',
+      title: 'Antes',
+      startAt: '2026-10-30T14:00:00.000Z',
+      endAt: '2026-10-30T15:00:00.000Z',
+    });
+    expect(programStatus(live, at)).toBe('live');
+    expect(programStatus(upcoming, at)).toBe('upcoming');
+    expect(programStatus(ended, at)).toBe('ended');
+    const channel = { id: '10', name: 'Demo', iconUrl: null };
+    const hits = sortSearchHits([
+      toSearchHit(ended, channel, at),
+      toSearchHit(upcoming, channel, at),
+      toSearchHit(live, channel, at),
+    ]);
+    expect(hits.map((hit) => hit.status)).toEqual(['live', 'upcoming', 'ended']);
+    expect(hits[0]?.statusLabel).toBe('en emisión');
+    expect(hits[0]?.startLocal).toMatch(/\d{2}\/\d{2}\/\d{4}/);
   });
 });
