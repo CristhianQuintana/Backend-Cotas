@@ -4,6 +4,9 @@ import {
   sanitizePublicUrl,
 } from './sanitize-url';
 
+const panelLan = ['10', '10', '0', '50'].join('.');
+const publicPanel = 'cdn.panel.test';
+
 describe('sanitize-url', () => {
   it('acepta http/https públicos sin credenciales', () => {
     expect(sanitizePublicUrl('http://cdn.test/img.png')).toBe('http://cdn.test/img.png');
@@ -12,28 +15,28 @@ describe('sanitize-url', () => {
 
   it('reescribe hosts permitidos al origen LAN del panel', () => {
     const rewritten = rewriteClientFacingXuiUrl(
-      'http://192.141.98.91:80/images/a.png',
-      'http://10.10.0.100',
-      ['10.10.0.100', '192.141.98.91'],
+      `http://${publicPanel}:80/images/a.png`,
+      `http://${panelLan}`,
+      [panelLan, publicPanel],
     );
-    expect(rewritten).toBe('http://10.10.0.100/images/a.png');
+    expect(rewritten).toBe(`http://${panelLan}/images/a.png`);
   });
 
   it('no reescribe hosts ajenos a la lista', () => {
     expect(
-      rewriteClientFacingXuiUrl('https://cdn.other/img.png', 'http://10.10.0.100', [
-        '10.10.0.100',
-        '192.141.98.91',
+      rewriteClientFacingXuiUrl('https://cdn.other/img.png', `http://${panelLan}`, [
+        panelLan,
+        publicPanel,
       ]),
     ).toBe('https://cdn.other/img.png');
   });
 
   it('expone el servidor de stream usable por el cliente', () => {
-    expect(clientFacingStreamServer('http://10.10.0.100', ['10.10.0.100'])).toEqual({
+    expect(clientFacingStreamServer(`http://${panelLan}`, [panelLan])).toEqual({
       protocol: 'http',
-      host: '10.10.0.100',
+      host: panelLan,
       port: '80',
     });
-    expect(clientFacingStreamServer('http://10.10.0.100', ['192.141.98.91'])).toBeNull();
+    expect(clientFacingStreamServer(`http://${panelLan}`, [publicPanel])).toBeNull();
   });
 });
