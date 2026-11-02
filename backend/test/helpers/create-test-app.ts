@@ -11,13 +11,16 @@ import {
   USER_REPOSITORY,
 } from '../../src/modules/identity/domain/ports/identity.ports';
 import { CatalogAnnouncementsService } from '../../src/modules/catalog/application/catalog-announcements.service';
+import { AccountRemindersService } from '../../src/modules/identity/application/use-cases/account-reminders.service';
 import { XUI_CLIENT } from '../../src/modules/integrations/xui/domain/models';
 import { FakeXui } from '../fakes/fake-xui';
+import { InMemoryAccountRemindersService } from '../fakes/in-memory-account-reminders';
 import { InMemoryIdentity } from '../fakes/in-memory-identity';
 
 export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: boolean }) {
   const identity = new InMemoryIdentity();
   const xui = options?.xui ?? new FakeXui();
+  const reminders = new InMemoryAccountRemindersService();
   const databaseUp = options?.databaseUp ?? true;
   const announcements = {
     async list(page: number, limit: number) {
@@ -55,10 +58,12 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
     .useValue(xui)
     .overrideProvider(CatalogAnnouncementsService)
     .useValue(announcements)
+    .overrideProvider(AccountRemindersService)
+    .useValue(reminders)
     .compile();
 
   const app = moduleRef.createNestApplication({ bodyParser: false });
   configureHttp(app);
   await app.init();
-  return { app: app as INestApplication, identity, xui };
+  return { app: app as INestApplication, identity, xui, reminders };
 }

@@ -83,12 +83,43 @@ model User {
   devices        Device[]
   mfaMethods     UserMfaMethod[]
   iptvAccounts   IptvAccount[]
+  reminders      AccountReminder[]
   auditLogs      AuditLog[]
   authChallenges AuthChallenge[]
 
   @@index([status])
   @@index([deletedAt])
   @@map("users")
+}
+
+enum AccountReminderState {
+  scheduled
+  cancelled
+  unverifiable
+}
+
+model AccountReminder {
+  id           String               @id @db.Uuid
+  userId       String               @map("user_id") @db.Uuid
+  channelId    String               @map("channel_id") @db.VarChar(64)
+  channelName  String               @map("channel_name") @db.VarChar(160)
+  programTitle String               @map("program_title") @db.VarChar(240)
+  epgProgramId String?              @map("epg_program_id") @db.VarChar(64)
+  /// Clave de deduplicación: epg_program_id o program_title.
+  programKey   String               @map("program_key") @db.VarChar(240)
+  leadMinutes  Int                  @map("lead_minutes")
+  state        AccountReminderState @default(scheduled)
+  startAt      DateTime?            @map("start_at") @db.Timestamptz(3)
+  endAt        DateTime?            @map("end_at") @db.Timestamptz(3)
+  notifyAt     DateTime?            @map("notify_at") @db.Timestamptz(3)
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, state])
+  @@index([userId, notifyAt])
+  @@map("account_reminders")
 }
 
 model Role {

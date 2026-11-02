@@ -103,8 +103,61 @@ Variables (ver `.env.example`): `FCM_ENABLED`, `FCM_PROJECT_ID`, `FCM_CLIENT_EMA
 
 Con FCM deshabilitado, la API de anuncios sigue siendo útil para la UI.
 
+## Recordatorios EPG (sincronización entre celulares)
+
+Persistidos en PostgreSQL ligados al **usuario JWT** (misma cuenta/línea), no al dispositivo. La app programa la notificación local tras el `GET`.
+
+Base: `/api/v1/account/reminders`  
+Auth: `Authorization: Bearer <accessToken>`
+
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| `GET` | `/api/v1/account/reminders` | Lista `scheduled` activos |
+| `POST` | `/api/v1/account/reminders` | Crear / idempotente |
+| `PATCH` | `/api/v1/account/reminders/:id` | Cambiar `leadMinutes` |
+| `DELETE` | `/api/v1/account/reminders/:id` | Soft-delete → `cancelled` (`204`) |
+
+**POST body**
+
+```json
+{
+  "channelId": "12345",
+  "channelName": "Canal X",
+  "programTitle": "Noticiero",
+  "leadMinutes": 5,
+  "epgProgramId": "abc",
+  "startAt": "2026-11-02T20:00:00.000Z",
+  "endAt": "2026-11-02T21:00:00.000Z"
+}
+```
+
+**Item (POST / PATCH / GET.items[])**
+
+```json
+{
+  "id": "uuid-del-servidor",
+  "channelId": "12345",
+  "channelName": "Canal X",
+  "programTitle": "Noticiero",
+  "leadMinutes": 5,
+  "state": "scheduled",
+  "epgProgramId": "abc",
+  "startAt": "2026-11-02T20:00:00.000Z",
+  "endAt": "2026-11-02T21:00:00.000Z",
+  "notifyAt": "2026-11-02T19:55:00.000Z"
+}
+```
+
+- `leadMinutes`: `5 | 10 | 15 | 30 | 60`
+- `state`: `scheduled | cancelled | unverifiable`
+- Fechas UTC ISO-8601; `notifyAt = startAt - leadMinutes`
+- `id` es UUID de BD (nunca `local-…`)
+- Duplicado mismo canal/programa/inicio → se reutiliza el existente
+- En `GET`, los que ya terminaron (`endAt < now`) pasan a `cancelled` y no se listan
+
 ## Fuera de alcance
 
 - Relación correo ↔ cuenta XUI.
 - APNs iOS nativo.
+- Push automático a la hora `notifyAt` (la app programa local tras el GET).
 - Réplica PostgreSQL.

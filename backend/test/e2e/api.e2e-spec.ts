@@ -191,6 +191,84 @@ describe('API COTAS', () => {
       .expect(404);
   });
 
+  it('persiste recordatorios por cuenta entre sesiones y cancela con soft-delete', async () => {
+    await http().get('/api/v1/account/reminders').expect(401);
+
+    const phoneA = await login('viewer.demo');
+    const tokenA = phoneA.body.accessToken as string;
+    const body = {
+      channelId: '12345',
+      channelName: 'Canal X',
+      programTitle: 'Noticiero',
+      leadMinutes: 5,
+      epgProgramId: 'abc',
+      startAt: '2026-11-02T20:00:00.000Z',
+      endAt: '2026-11-02T21:00:00.000Z',
+    };
+
+    const created = await http()
+      .post('/api/v1/account/reminders')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send(body)
+      .expect(201);
+    expect(created.body.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(created.body).toMatchObject({
+      channelId: '12345',
+      channelName: 'Canal X',
+      programTitle: 'Noticiero',
+      leadMinutes: 5,
+      state: 'scheduled',
+      epgProgramId: 'abc',
+      startAt: '2026-11-02T20:00:00.000Z',
+      endAt: '2026-11-02T21:00:00.000Z',
+      notifyAt: '2026-11-02T19:55:00.000Z',
+    });
+    expect(created.body.id).not.toMatch(/^local-/);
+
+    const again = await http()
+      .post('/api/v1/account/reminders')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send(body)
+      .expect(201);
+    expect(again.body.id).toBe(created.body.id);
+
+    const patched = await http()
+      .patch(`/api/v1/account/reminders/${created.body.id}`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ leadMinutes: 15 })
+      .expect(200);
+    expect(patched.body.leadMinutes).toBe(15);
+    expect(patched.body.notifyAt).toBe('2026-11-02T19:45:00.000Z');
+
+    const phoneB = await login('viewer.demo');
+    const tokenB = phoneB.body.accessToken as string;
+    const listed = await http()
+      .get('/api/v1/account/reminders')
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(200);
+    expect(listed.body.items).toHaveLength(1);
+    expect(listed.body.items[0].id).toBe(created.body.id);
+
+    await http()
+      .delete(`/api/v1/account/reminders/${created.body.id}`)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(204);
+
+    const afterDelete = await http()
+      .get('/api/v1/account/reminders')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+    expect(afterDelete.body.items).toEqual([]);
+
+    const other = await login('other.demo');
+    await http()
+      .delete(`/api/v1/account/reminders/${created.body.id}`)
+      .set('Authorization', `Bearer ${other.body.accessToken}`)
+      .expect(404);
+  });
+
   it('expone suscripción XUI, registra push-token y exige auth en anuncios', async () => {
     await http().get('/api/v1/account/subscription').expect(401);
     await http()

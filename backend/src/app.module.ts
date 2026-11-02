@@ -29,12 +29,14 @@ import { IdentityController } from './modules/identity/presentation/http/identit
 import { SessionsController } from './modules/identity/presentation/http/sessions.controller';
 import { AdminUsersController } from './modules/identity/presentation/http/admin-users.controller';
 import { AccountController } from './modules/identity/presentation/http/account.controller';
+import { AccountRemindersController } from './modules/identity/presentation/http/account-reminders.controller';
 import { DevicesController } from './modules/identity/presentation/http/devices.controller';
 import { LoginUseCase } from './modules/identity/application/use-cases/login.use-case';
 import { RefreshSessionUseCase } from './modules/identity/application/use-cases/refresh-session.use-case';
 import { AdminUsersUseCase } from './modules/identity/application/use-cases/admin-users.use-case';
 import { GetSubscriptionUseCase } from './modules/identity/application/use-cases/subscription.use-case';
 import { RegisterPushTokenUseCase } from './modules/identity/application/use-cases/register-push-token.use-case';
+import { AccountRemindersService } from './modules/identity/application/use-cases/account-reminders.service';
 import {
   GetProfileUseCase,
   ListSessionsUseCase,
@@ -82,6 +84,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     IdentityController,
     SessionsController,
     AccountController,
+    AccountRemindersController,
     DevicesController,
     AdminUsersController,
     CatalogController,
@@ -125,6 +128,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     LogoutUseCase,
     GetProfileUseCase,
     GetSubscriptionUseCase,
+    AccountRemindersService,
     RegisterPushTokenUseCase,
     ListSessionsUseCase,
     RevokeSessionUseCase,
