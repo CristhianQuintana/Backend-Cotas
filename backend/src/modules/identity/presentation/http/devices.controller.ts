@@ -8,7 +8,7 @@ import { RegisterPushTokenUseCase } from '../../application/use-cases/register-p
 class PushTokenDto {
   @IsString()
   @Length(20, 512)
-  @Matches(/^[A-Za-z0-9_.:\-]+$/u)
+  @Matches(/^[A-Za-z0-9_.:-]+$/u)
   token!: string;
 
   @IsString()
