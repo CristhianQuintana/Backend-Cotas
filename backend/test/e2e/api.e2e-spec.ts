@@ -196,14 +196,18 @@ describe('API COTAS', () => {
 
     const phoneA = await login('viewer.demo');
     const tokenA = phoneA.body.accessToken as string;
+    const startAt = new Date(Date.now() + 2 * 60 * 60_000).toISOString();
+    const endAt = new Date(Date.now() + 3 * 60 * 60_000).toISOString();
+    const notifyAt5 = new Date(new Date(startAt).getTime() - 5 * 60_000).toISOString();
+    const notifyAt15 = new Date(new Date(startAt).getTime() - 15 * 60_000).toISOString();
     const body = {
       channelId: '12345',
       channelName: 'Canal X',
       programTitle: 'Noticiero',
       leadMinutes: 5,
       epgProgramId: 'abc',
-      startAt: '2026-11-02T20:00:00.000Z',
-      endAt: '2026-11-02T21:00:00.000Z',
+      startAt,
+      endAt,
     };
 
     const created = await http()
@@ -221,9 +225,9 @@ describe('API COTAS', () => {
       leadMinutes: 5,
       state: 'scheduled',
       epgProgramId: 'abc',
-      startAt: '2026-11-02T20:00:00.000Z',
-      endAt: '2026-11-02T21:00:00.000Z',
-      notifyAt: '2026-11-02T19:55:00.000Z',
+      startAt,
+      endAt,
+      notifyAt: notifyAt5,
     });
     expect(created.body.id).not.toMatch(/^local-/);
 
@@ -240,7 +244,7 @@ describe('API COTAS', () => {
       .send({ leadMinutes: 15 })
       .expect(200);
     expect(patched.body.leadMinutes).toBe(15);
-    expect(patched.body.notifyAt).toBe('2026-11-02T19:45:00.000Z');
+    expect(patched.body.notifyAt).toBe(notifyAt15);
 
     const phoneB = await login('viewer.demo');
     const tokenB = phoneB.body.accessToken as string;
