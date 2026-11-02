@@ -76,7 +76,16 @@ describe('CatalogUseCase', () => {
 
   it('no trata un catálogo vacío con línea inválida como éxito', async () => {
     const xui = new FakeXui();
-    xui.line = { authenticated: false, status: null };
+    xui.line = {
+      authenticated: false,
+      status: null,
+      username: null,
+      displayName: null,
+      expiresAt: null,
+      maxConnections: null,
+      activeConnections: null,
+      isTrial: null,
+    };
     const catalog = new CatalogUseCase(xui);
     await expect(catalog.liveCategories({ page: 1, limit: 20 })).rejects.toBeInstanceOf(
       DomainError,

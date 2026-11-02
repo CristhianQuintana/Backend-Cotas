@@ -67,6 +67,7 @@ model User {
   email           String?    @db.VarChar(254)
   phone           String?    @db.VarChar(32)
   username        String?    @db.VarChar(64)
+  displayName        String?    @map("display_name") @db.VarChar(120)
   passwordHash       String?    @map("password_hash")
   passwordChangedAt  DateTime?  @map("password_changed_at") @db.Timestamptz(3)
   status             UserStatus @default(PENDING)
@@ -149,6 +150,8 @@ model Device {
   platform             DevicePlatform
   deviceName           String?        @map("device_name") @db.VarChar(80)
   deviceIdentifierHash String         @map("device_identifier_hash") @db.VarChar(64)
+  pushToken            String?        @map("push_token") @db.VarChar(512)
+  pushPlatform         String?        @map("push_platform") @db.VarChar(32)
   status               DeviceStatus   @default(ACTIVE)
   lastSeenAt           DateTime?      @map("last_seen_at") @db.Timestamptz(3)
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -158,6 +161,7 @@ model Device {
   sessions UserSession[]
 
   @@index([userId, status])
+  @@index([pushToken])
   @@map("devices")
 }
 
@@ -201,22 +205,49 @@ model UserMfaMethod {
 }
 
 model IptvAccount {
-  id                 String            @id @db.Uuid
-  userId             String            @map("user_id") @db.Uuid
-  provider           String            @default("XUI") @db.VarChar(32)
-  externalAccountRef String?           @map("external_account_ref") @db.VarChar(128)
-  username           String?           @db.VarChar(64)
-  passwordEncrypted  String?           @map("password_encrypted")
-  status             IptvAccountStatus @default(ACTIVE)
-  expiresAt          DateTime?         @map("expires_at") @db.Timestamptz(3)
-  lastVerifiedAt     DateTime?         @map("last_verified_at") @db.Timestamptz(3)
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                   String            @id @db.Uuid
+  userId               String            @map("user_id") @db.Uuid
+  provider             String            @default("XUI") @db.VarChar(32)
+  externalAccountRef   String?           @map("external_account_ref") @db.VarChar(128)
+  username             String?           @db.VarChar(64)
+  passwordEncrypted    String?           @map("password_encrypted")
+  status               IptvAccountStatus @default(ACTIVE)
+  expiresAt            DateTime?         @map("expires_at") @db.Timestamptz(3)
+  maxConnections       Int?              @map("max_connections")
+  activeConnections    Int?              @map("active_connections")
+  displayNameSnapshot  String?           @map("display_name_snapshot") @db.VarChar(120)
+  lastVerifiedAt       DateTime?         @map("last_verified_at") @db.Timestamptz(3)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
   @@map("iptv_accounts")
+}
+
+model CatalogContentSnapshot {
+  id         String   @id @db.Uuid
+  provider   String   @default("XUI") @db.VarChar(32)
+  resource   String   @db.VarChar(16)
+  contentIds Json     @map("content_ids")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([provider, resource])
+  @@map("catalog_content_snapshots")
+}
+
+model CatalogAnnouncement {
+  id        String   @id @db.Uuid
+  kind      String   @db.VarChar(16)
+  title     String   @db.VarChar(240)
+  contentId String   @map("content_id") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([kind, createdAt])
+  @@map("catalog_announcements")
 }
 
 model AuditLog {

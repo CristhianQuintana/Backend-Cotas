@@ -53,6 +53,7 @@ export class GetProfileUseCase {
     return {
       id: record.id,
       username: record.username,
+      displayName: record.displayName,
       role: record.role,
       roles: record.roles,
       status: record.status,

@@ -65,9 +65,26 @@ describe('mapeadores XUI', () => {
       DomainError,
     );
     const status = mapLineStatus({
-      user_info: { auth: 1, status: 'Active', username: 'line', password: 'secret-line' },
+      user_info: {
+        auth: 1,
+        status: 'Active',
+        username: 'line',
+        password: 'secret-line',
+        name: 'Cliente Demo',
+        exp_date: '2026-12-31 23:59:59',
+        max_connections: '3',
+        active_cons: 1,
+        is_trial: '0',
+      },
     });
-    expect(status).toEqual({ authenticated: true, status: 'Active' });
+    expect(status.authenticated).toBe(true);
+    expect(status.status).toBe('Active');
+    expect(status.username).toBe('line');
+    expect(status.displayName).toBe('Cliente Demo');
+    expect(status.maxConnections).toBe(3);
+    expect(status.activeConnections).toBe(1);
+    expect(status.isTrial).toBe(false);
+    expect(status.expiresAt).toBe('2026-12-31T23:59:59.000Z');
     expect(JSON.stringify(status)).not.toContain('secret-line');
   });
 

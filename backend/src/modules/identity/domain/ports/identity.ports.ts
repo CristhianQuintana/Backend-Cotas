@@ -63,10 +63,19 @@ export interface RecoveryCodeRepository {
   consume(userId: string, codeHash: string, now: Date): Promise<boolean>;
 }
 
+export interface LineSnapshotInput {
+  displayName: string | null;
+  expiresAt: string | null;
+  maxConnections: number | null;
+  activeConnections: number | null;
+  status: string | null;
+}
+
 export interface AcceptLineInput {
   username: string;
   password: string;
   now: Date;
+  snapshot?: LineSnapshotInput;
 }
 
 export type AcceptLineResult = { ok: true; user: UserRecord } | { ok: false; reason: 'blocked' };
@@ -76,9 +85,29 @@ export interface LineCredentials {
   password: string;
 }
 
+export interface SubscriptionSnapshot {
+  displayName: string | null;
+  username: string | null;
+  expiresAt: string | null;
+  maxConnections: number | null;
+  activeConnections: number | null;
+  status: string | null;
+  lastVerifiedAt: string | null;
+  source: 'live' | 'cache';
+}
+
 export interface LineAccess {
   acceptLine(input: AcceptLineInput): Promise<AcceptLineResult>;
   credentialsFor(userId: string): Promise<LineCredentials>;
+  saveLineSnapshot(userId: string, snapshot: LineSnapshotInput, now: Date): Promise<void>;
+  getSubscriptionSnapshot(userId: string): Promise<SubscriptionSnapshot | null>;
+  setPushToken(
+    userId: string,
+    sessionId: string,
+    token: string,
+    platform: string,
+    now: Date,
+  ): Promise<void>;
   revokeDevice(deviceId: string, userId: string, now: Date): Promise<'revoked' | 'not_found'>;
 }
 

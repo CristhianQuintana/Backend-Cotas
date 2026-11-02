@@ -15,7 +15,7 @@ Los controladores validan y delegan. Los casos de uso dependen de puertos. Prism
 
 ## Catálogo
 
-Las listas y fichas se cachean por usuario de línea: memoria de proceso (TTL corto) y Redis compartido (`CATALOG_CACHE_TTL_SECONDS`). El worker BullMQ refresca periódicamente el catálogo de la línea de sonda en Redis. Si Redis cae, la API sigue con memoria local y XUI. No hay tablas de catálogo en PostgreSQL. Detalle operativo en `docs/operacion/redis-catalogo.md`.
+Las listas y fichas se cachean por usuario de línea: memoria de proceso (TTL corto) y Redis compartido (`CATALOG_CACHE_TTL_SECONDS`). El worker BullMQ refresca periódicamente el catálogo de la línea de sonda en Redis. Si Redis cae, la API sigue con memoria local y XUI. PostgreSQL guarda snapshot de IDs VOD/series y anuncios de novedades (push FCM opcional); el catálogo completo no vive en tablas relacionales. Detalle: `docs/operacion/redis-catalogo.md` y `docs/integraciones/cuenta-y-notificaciones.md`.
 
 ## Reproducción
 

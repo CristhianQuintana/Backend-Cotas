@@ -41,6 +41,8 @@ describe('validateEnv', () => {
     expect(config.port).toBe(3000);
     expect(config.xuiAllowedStreamHosts).toEqual(['stream.test.local']);
     expect(config.databaseUrl).not.toContain('CHANGE_ME');
+    expect(config.fcmEnabled).toBe(false);
+    expect(config.fcmProjectId).toBeNull();
   });
 
   it('falla si falta una variable crítica y no revela el valor', () => {

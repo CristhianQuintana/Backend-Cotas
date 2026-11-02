@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../../identity/domain/models/authenticated-user';
 import { LINE_ACCESS, type LineAccess } from '../../../identity/domain/ports/identity.ports';
+import { CatalogAnnouncementsService } from '../../application/catalog-announcements.service';
 import { CatalogUseCase } from '../../application/catalog.use-case';
 import {
   CatalogQueryDto,
@@ -21,7 +22,14 @@ export class CatalogController {
   constructor(
     @Inject(CatalogUseCase) private readonly catalog: CatalogUseCase,
     @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+    @Inject(CatalogAnnouncementsService)
+    private readonly announcements: CatalogAnnouncementsService,
   ) {}
+
+  @Get('announcements')
+  listAnnouncements(@Query() query: CatalogQueryDto) {
+    return this.announcements.list(query.page ?? 1, query.limit ?? 20);
+  }
 
   @Get('live/categories')
   async liveCategories(@CurrentUser() user: AuthenticatedUser, @Query() query: CatalogQueryDto) {

@@ -5,7 +5,19 @@ import {
   PublicMessages,
 } from '../../../../../common/exceptions/domain-error';
 import { redactSensitive } from '../../../../../common/logging/redact';
-import type { XuiClient, XuiCredentials } from '../../domain/models';
+import {
+  clientFacingStreamServer,
+  rewriteClientFacingXuiUrl,
+} from '../../../../../common/utils/sanitize-url';
+import type {
+  XuiClient,
+  XuiCredentials,
+  XuiLiveStream,
+  XuiSeriesDetails,
+  XuiSeriesSummary,
+  XuiVodDetails,
+  XuiVodStream,
+} from '../../domain/models';
 import {
   mapCategories,
   mapLineStatus,
@@ -64,7 +76,12 @@ export class XuiHttpClient implements XuiClient {
   }
 
   getLiveStreams(credentials?: XuiCredentials) {
-    return this.request('get_live_streams', {}, (payload) => mapLiveStreams(payload), credentials);
+    return this.request(
+      'get_live_streams',
+      {},
+      (payload) => mapLiveStreams(payload).map((item) => this.rewriteLive(item)),
+      credentials,
+    );
   }
 
   getVodCategories(credentials?: XuiCredentials) {
@@ -72,14 +89,22 @@ export class XuiHttpClient implements XuiClient {
   }
 
   getVodStreams(credentials?: XuiCredentials) {
-    return this.request('get_vod_streams', {}, (payload) => mapVodStreams(payload), credentials);
+    return this.request(
+      'get_vod_streams',
+      {},
+      (payload) => mapVodStreams(payload).map((item) => this.rewriteVod(item)),
+      credentials,
+    );
   }
 
   getVodInfo(vodId: string, credentials?: XuiCredentials) {
     return this.requestContent(
       'get_vod_info',
       { vod_id: vodId },
-      (payload) => mapVodInfo(payload),
+      (payload) => {
+        const mapped = mapVodInfo(payload);
+        return mapped ? this.rewriteVodDetails(mapped) : null;
+      },
       credentials,
     );
   }
@@ -94,14 +119,22 @@ export class XuiHttpClient implements XuiClient {
   }
 
   getSeries(credentials?: XuiCredentials) {
-    return this.request('get_series', {}, (payload) => mapSeries(payload), credentials);
+    return this.request(
+      'get_series',
+      {},
+      (payload) => mapSeries(payload).map((item) => this.rewriteSeries(item)),
+      credentials,
+    );
   }
 
   getSeriesInfo(seriesId: string, credentials?: XuiCredentials) {
     return this.requestContent(
       'get_series_info',
       { series_id: seriesId },
-      (payload) => mapSeriesInfo(payload, seriesId),
+      (payload) => {
+        const mapped = mapSeriesInfo(payload, seriesId);
+        return mapped ? this.rewriteSeriesDetails(mapped) : null;
+      },
       credentials,
     );
   }
@@ -123,9 +156,52 @@ export class XuiHttpClient implements XuiClient {
     return this.request(
       'line',
       {},
-      (payload) => mapServerInfo(payload, this.options.allowedStreamHosts),
+      (payload) => {
+        // Valida el host que anuncia el panel; si hay base LAN usable, se usa esa
+        // para que el móvil reproduzca sin depender de la IP pública del panel.
+        const advertised = mapServerInfo(payload, this.options.allowedStreamHosts);
+        return (
+          clientFacingStreamServer(this.options.baseUrl, this.options.allowedStreamHosts) ??
+          advertised
+        );
+      },
       credentials,
     );
+  }
+
+  private rewriteUrl(url: string | null): string | null {
+    return rewriteClientFacingXuiUrl(url, this.options.baseUrl, this.options.allowedStreamHosts);
+  }
+
+  private rewriteLive(item: XuiLiveStream): XuiLiveStream {
+    return { ...item, iconUrl: this.rewriteUrl(item.iconUrl) };
+  }
+
+  private rewriteVod(item: XuiVodStream): XuiVodStream {
+    return { ...item, iconUrl: this.rewriteUrl(item.iconUrl) };
+  }
+
+  private rewriteVodDetails(item: XuiVodDetails): XuiVodDetails {
+    return { ...item, posterUrl: this.rewriteUrl(item.posterUrl) };
+  }
+
+  private rewriteSeries(item: XuiSeriesSummary): XuiSeriesSummary {
+    return { ...item, posterUrl: this.rewriteUrl(item.posterUrl) };
+  }
+
+  private rewriteSeriesDetails(item: XuiSeriesDetails): XuiSeriesDetails {
+    return {
+      ...item,
+      posterUrl: this.rewriteUrl(item.posterUrl),
+      seasons: item.seasons.map((season) => ({
+        ...season,
+        posterUrl: this.rewriteUrl(season.posterUrl),
+      })),
+      episodes: item.episodes.map((episode) => ({
+        ...episode,
+        posterUrl: this.rewriteUrl(episode.posterUrl),
+      })),
+    };
   }
 
   private requestContent<T>(

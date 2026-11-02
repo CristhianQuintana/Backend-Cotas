@@ -95,6 +95,13 @@ export class LoginUseCase {
       username,
       password: command.password,
       now: this.clock.now(),
+      snapshot: {
+        displayName: line.displayName ?? username,
+        expiresAt: line.expiresAt,
+        maxConnections: line.maxConnections,
+        activeConnections: line.activeConnections,
+        status: line.status,
+      },
     });
     if (!accepted.ok) {
       return this.failLogin(command.meta, null, 'blocked');

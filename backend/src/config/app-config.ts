@@ -37,6 +37,10 @@ export interface AppConfig {
   catalogEpgCacheTtlSeconds: number;
   catalogSyncIntervalMs: number;
   catalogSyncConcurrency: number;
+  fcmEnabled: boolean;
+  fcmProjectId: string | null;
+  fcmClientEmail: string | null;
+  fcmPrivateKey: string | null;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

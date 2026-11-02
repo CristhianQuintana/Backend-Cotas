@@ -14,7 +14,16 @@ import type {
 import { DomainError, ErrorCodes, PublicMessages } from '../../src/common/exceptions/domain-error';
 
 export class FakeXui implements XuiClient {
-  line: XuiLineStatus = { authenticated: true, status: 'Active' };
+  line: XuiLineStatus = {
+    authenticated: true,
+    status: 'Active',
+    username: 'viewer.demo',
+    displayName: 'Viewer Demo',
+    expiresAt: '2099-12-31T23:59:59.000Z',
+    maxConnections: 2,
+    activeConnections: 1,
+    isTrial: false,
+  };
   readonly lines = new Map<string, string>();
   liveCategories: XuiCategory[] = [];
   liveStreams: XuiLiveStream[] = [];
@@ -31,7 +40,16 @@ export class FakeXui implements XuiClient {
   authenticate(credentials: XuiCredentials): Promise<XuiLineStatus> {
     const expected = this.lines.get(credentials.username);
     const ok = expected !== undefined && expected === credentials.password;
-    return this.answer({ authenticated: ok, status: ok ? 'Active' : 'Disabled' });
+    return this.answer({
+      authenticated: ok,
+      status: ok ? 'Active' : 'Disabled',
+      username: credentials.username,
+      displayName: ok ? (this.line.displayName ?? credentials.username) : credentials.username,
+      expiresAt: ok ? (this.line.expiresAt ?? '2099-12-31T23:59:59.000Z') : null,
+      maxConnections: ok ? (this.line.maxConnections ?? 2) : null,
+      activeConnections: ok ? (this.line.activeConnections ?? 0) : null,
+      isTrial: this.line.isTrial,
+    });
   }
 
   getLineStatus(): Promise<XuiLineStatus> {

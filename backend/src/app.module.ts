@@ -12,11 +12,13 @@ import { AUDIT_REPOSITORY } from './modules/audit/domain/audit-repository';
 import { CatalogController } from './modules/catalog/presentation/http/catalog.controller';
 import { CatalogUseCase } from './modules/catalog/application/catalog.use-case';
 import { CatalogSyncService } from './modules/catalog/application/catalog-sync.service';
+import { CatalogAnnouncementsService } from './modules/catalog/application/catalog-announcements.service';
 import { CATALOG_CACHE } from './modules/catalog/domain/catalog-cache';
 import {
   MemoryCatalogCache,
   RedisCatalogCache,
 } from './modules/catalog/infrastructure/redis-catalog.cache';
+import { FcmPushService } from './modules/notifications/fcm-push.service';
 import { HealthController } from './modules/health/health.controller';
 import { HealthService } from './modules/health/health.service';
 import { XuiHttpClient } from './modules/integrations/xui/infrastructure/http/xui-http.client';
@@ -26,9 +28,13 @@ import { RolesGuard } from './modules/identity/presentation/guards/roles.guard';
 import { IdentityController } from './modules/identity/presentation/http/identity.controller';
 import { SessionsController } from './modules/identity/presentation/http/sessions.controller';
 import { AdminUsersController } from './modules/identity/presentation/http/admin-users.controller';
+import { AccountController } from './modules/identity/presentation/http/account.controller';
+import { DevicesController } from './modules/identity/presentation/http/devices.controller';
 import { LoginUseCase } from './modules/identity/application/use-cases/login.use-case';
 import { RefreshSessionUseCase } from './modules/identity/application/use-cases/refresh-session.use-case';
 import { AdminUsersUseCase } from './modules/identity/application/use-cases/admin-users.use-case';
+import { GetSubscriptionUseCase } from './modules/identity/application/use-cases/subscription.use-case';
+import { RegisterPushTokenUseCase } from './modules/identity/application/use-cases/register-push-token.use-case';
 import {
   GetProfileUseCase,
   ListSessionsUseCase,
@@ -58,6 +64,7 @@ import {
 } from './modules/identity/domain/ports/identity.ports';
 import { PlaybackController } from './modules/playback/presentation/http/playback.controller';
 import { AuthorizePlaybackUseCase } from './modules/playback/application/authorize-playback.use-case';
+import { MediaController } from './modules/media/presentation/http/media.controller';
 
 @Module({
   imports: [
@@ -74,9 +81,12 @@ import { AuthorizePlaybackUseCase } from './modules/playback/application/authori
     HealthController,
     IdentityController,
     SessionsController,
+    AccountController,
+    DevicesController,
     AdminUsersController,
     CatalogController,
     PlaybackController,
+    MediaController,
     AuditController,
   ],
   providers: [
@@ -114,6 +124,8 @@ import { AuthorizePlaybackUseCase } from './modules/playback/application/authori
     RefreshSessionUseCase,
     LogoutUseCase,
     GetProfileUseCase,
+    GetSubscriptionUseCase,
+    RegisterPushTokenUseCase,
     ListSessionsUseCase,
     RevokeSessionUseCase,
     BeginMfaEnrollmentUseCase,
@@ -131,6 +143,8 @@ import { AuthorizePlaybackUseCase } from './modules/playback/application/authori
       ) => (config.redisEnabled ? redisCache : memoryCache),
     },
     CatalogUseCase,
+    CatalogAnnouncementsService,
+    FcmPushService,
     CatalogSyncService,
     AuthorizePlaybackUseCase,
     ListAuditUseCase,

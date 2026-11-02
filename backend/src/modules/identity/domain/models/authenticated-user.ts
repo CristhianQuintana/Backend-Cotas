@@ -4,6 +4,7 @@ export type UserStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'DISABLED';
 export interface UserRecord {
   id: string;
   username: string;
+  displayName: string | null;
   role: UserRole;
   roles: UserRole[];
   status: UserStatus;
@@ -17,6 +18,7 @@ export interface UserRecord {
 export interface PublicUserView {
   id: string;
   username: string;
+  displayName: string | null;
   role: UserRole;
   roles: UserRole[];
   status: UserStatus;
@@ -29,6 +31,7 @@ export function toPublicUser(user: UserRecord): PublicUserView {
   return {
     id: user.id,
     username: user.username,
+    displayName: user.displayName,
     role: user.role,
     roles: user.roles,
     status: user.status,

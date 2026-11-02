@@ -27,9 +27,11 @@ import {
   type CreateLocalUserInput,
   type LineAccess,
   type LineCredentials,
+  type LineSnapshotInput,
   type MfaSecretCipher,
   type RecoveryCodeRepository,
   type SessionRepository,
+  type SubscriptionSnapshot,
   type UpdateLocalUserInput,
   type UserRepository,
 } from '../../domain/ports/identity.ports';
@@ -473,6 +475,68 @@ export class PrismaIdentityStore
     }
   }
 
+  async saveLineSnapshot(userId: string, snapshot: LineSnapshotInput, now: Date): Promise<void> {
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await applyLineSnapshot(tx, userId, snapshot, now);
+      });
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async getSubscriptionSnapshot(userId: string): Promise<SubscriptionSnapshot | null> {
+    try {
+      const [user, account] = await Promise.all([
+        this.prisma.user.findFirst({ where: { id: userId, deletedAt: null } }),
+        this.prisma.iptvAccount.findFirst({
+          where: { userId, provider: 'XUI', status: 'ACTIVE' },
+        }),
+      ]);
+      if (!user || !account) {
+        return null;
+      }
+      return {
+        displayName: user.displayName ?? account.displayNameSnapshot ?? account.username,
+        username: account.username,
+        expiresAt: account.expiresAt?.toISOString() ?? null,
+        maxConnections: account.maxConnections,
+        activeConnections: account.activeConnections,
+        status: account.status,
+        lastVerifiedAt: account.lastVerifiedAt?.toISOString() ?? null,
+        source: 'cache',
+      };
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async setPushToken(
+    userId: string,
+    sessionId: string,
+    token: string,
+    platform: string,
+    now: Date,
+  ): Promise<void> {
+    try {
+      const session = await this.prisma.userSession.findFirst({
+        where: { id: sessionId, userId, revokedAt: null },
+      });
+      if (!session?.deviceId) {
+        throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+      }
+      const updated = await this.prisma.device.updateMany({
+        where: { id: session.deviceId, userId, status: 'ACTIVE' },
+        data: { pushToken: token, pushPlatform: platform, lastSeenAt: now },
+      });
+      if (updated.count !== 1) {
+        throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+      }
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
   private async writeLine(input: AcceptLineInput): Promise<AcceptLineResult> {
     const username = input.username.trim();
     return this.prisma.$transaction(async (tx) => {
@@ -490,6 +554,7 @@ export class PrismaIdentityStore
         }
       }
       const userId = existing?.id ?? newId();
+      const displayName = input.snapshot?.displayName ?? null;
       if (!existing) {
         const role = await tx.role.findUnique({ where: { code: 'CUSTOMER' } });
         if (!role) {
@@ -499,6 +564,7 @@ export class PrismaIdentityStore
           data: {
             id: userId,
             username,
+            displayName,
             status: 'ACTIVE',
             lastLoginAt: input.now,
             userRoles: { create: { roleId: role.id } },
@@ -507,7 +573,10 @@ export class PrismaIdentityStore
       } else {
         await tx.user.update({
           where: { id: userId },
-          data: { lastLoginAt: input.now },
+          data: {
+            lastLoginAt: input.now,
+            ...(displayName ? { displayName } : {}),
+          },
         });
         if (existing.userRoles.length === 0) {
           const role = await tx.role.findUnique({ where: { code: 'CUSTOMER' } });
@@ -520,6 +589,7 @@ export class PrismaIdentityStore
       const account = await tx.iptvAccount.findFirst({
         where: { userId, provider: 'XUI', status: 'ACTIVE' },
       });
+      const snapshotFields = lineAccountFields(input.snapshot, input.now);
       if (account) {
         await tx.iptvAccount.update({
           where: { id: account.id },
@@ -527,7 +597,7 @@ export class PrismaIdentityStore
             username,
             externalAccountRef: username,
             passwordEncrypted: encrypted,
-            lastVerifiedAt: input.now,
+            ...snapshotFields,
           },
         });
       } else {
@@ -540,7 +610,7 @@ export class PrismaIdentityStore
             username,
             passwordEncrypted: encrypted,
             status: 'ACTIVE',
-            lastVerifiedAt: input.now,
+            ...snapshotFields,
           },
         });
       }
@@ -553,6 +623,43 @@ export class PrismaIdentityStore
   }
 }
 
+async function applyLineSnapshot(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  snapshot: LineSnapshotInput,
+  now: Date,
+): Promise<void> {
+  if (snapshot.displayName) {
+    await tx.user.update({
+      where: { id: userId },
+      data: { displayName: snapshot.displayName },
+    });
+  }
+  const account = await tx.iptvAccount.findFirst({
+    where: { userId, provider: 'XUI', status: 'ACTIVE' },
+  });
+  if (!account) {
+    return;
+  }
+  await tx.iptvAccount.update({
+    where: { id: account.id },
+    data: lineAccountFields(snapshot, now),
+  });
+}
+
+function lineAccountFields(snapshot: LineSnapshotInput | undefined, now: Date) {
+  if (!snapshot) {
+    return { lastVerifiedAt: now };
+  }
+  return {
+    lastVerifiedAt: now,
+    expiresAt: snapshot.expiresAt ? new Date(snapshot.expiresAt) : null,
+    maxConnections: snapshot.maxConnections,
+    activeConnections: snapshot.activeConnections,
+    displayNameSnapshot: snapshot.displayName,
+  };
+}
+
 function toUser(user: UserGraph): UserRecord {
   const roles = user.userRoles.map((link) => link.role.code).filter(isUserRole);
   const active = pickMethod(user.mfaMethods, 'ACTIVE');
@@ -562,6 +669,7 @@ function toUser(user: UserGraph): UserRecord {
   return {
     id: user.id,
     username: user.username ?? '',
+    displayName: user.displayName,
     role: primaryRole(roles),
     roles: roles.length > 0 ? roles : (['CUSTOMER'] as UserRole[]),
     status,

@@ -112,7 +112,23 @@ export function mapShortEpg(payload: unknown): XuiEpgEntry[] {
 export function mapLineStatus(payload: unknown): XuiLineStatus {
   const info = userInfo(payload);
   const status = typeof info.status === 'string' ? info.status.slice(0, 32) : null;
-  return { authenticated: Number(info.auth) === 1, status };
+  const username = asName(info.username);
+  const named =
+    asName(info.name) ??
+    asName(info.fullname) ??
+    asName(info.customer_name) ??
+    asName(info.customer) ??
+    username;
+  return {
+    authenticated: Number(info.auth) === 1,
+    status,
+    username,
+    displayName: named,
+    expiresAt: asExpiresAt(info.exp_date),
+    maxConnections: asNonNegativeInt(info.max_connections),
+    activeConnections: asNonNegativeInt(info.active_cons),
+    isTrial: asOptionalBool(info.is_trial),
+  };
 }
 
 export function mapServerInfo(payload: unknown, allowedHosts: readonly string[]): XuiServerInfo {
@@ -275,6 +291,36 @@ function asIsoFromDateText(value: string | null): string | null {
     : value.replace(' ', 'T') + (value.endsWith('Z') ? '' : 'Z');
   const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function asExpiresAt(value: unknown): string | null {
+  if (value === null || value === undefined || value === '' || value === '0' || value === 0) {
+    return null;
+  }
+  return asIsoFromUnix(value) ?? asIsoFromDateText(typeof value === 'string' ? value : null);
+}
+
+function asNonNegativeInt(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    return Math.min(Math.trunc(value), 10_000);
+  }
+  if (typeof value === 'string' && /^[0-9]{1,5}$/u.test(value.trim())) {
+    return Number(value.trim());
+  }
+  return null;
+}
+
+function asOptionalBool(value: unknown): boolean | null {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (value === 1 || value === '1' || value === 'true') {
+    return true;
+  }
+  if (value === 0 || value === '0' || value === 'false') {
+    return false;
+  }
+  return null;
 }
 
 function readArray(payload: unknown): unknown[] {

@@ -191,6 +191,50 @@ describe('API COTAS', () => {
       .expect(404);
   });
 
+  it('expone suscripción XUI, registra push-token y exige auth en anuncios', async () => {
+    await http().get('/api/v1/account/subscription').expect(401);
+    await http()
+      .put('/api/v1/devices/push-token')
+      .send({ token: 'a'.repeat(40), platform: 'android' })
+      .expect(401);
+    await http().get('/api/v1/catalog/announcements').expect(401);
+
+    const logged = await login('viewer.demo');
+    const token = logged.body.accessToken as string;
+
+    const me = await http()
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(me.body.displayName).toBe('Viewer Demo');
+
+    const subscription = await http()
+      .get('/api/v1/account/subscription')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(subscription.body).toMatchObject({
+      username: 'viewer.demo',
+      displayName: 'Viewer Demo',
+      maxConnections: 2,
+      activeConnections: 1,
+      source: 'live',
+    });
+    expect(subscription.body.expiresAt).toBeTruthy();
+
+    await http()
+      .put('/api/v1/devices/push-token')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ token: 'fcm_test_token_' + 'x'.repeat(24), platform: 'android' })
+      .expect(204);
+    expect(identity.pushTokens.size).toBe(1);
+
+    const announcements = await http()
+      .get('/api/v1/catalog/announcements?page=1&limit=10')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+    expect(announcements.body).toMatchObject({ page: 1, limit: 10, total: 0, items: [] });
+  });
+
   it('separa autenticación de autorización y evita IDOR de sesiones', async () => {
     const viewer = await login('viewer.demo');
     const other = await login('other.demo');

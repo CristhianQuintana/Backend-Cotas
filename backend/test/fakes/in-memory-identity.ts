@@ -12,8 +12,10 @@ import type {
   CreateLocalUserInput,
   LineAccess,
   LineCredentials,
+  LineSnapshotInput,
   RecoveryCodeRepository,
   SessionRepository,
+  SubscriptionSnapshot,
   UpdateLocalUserInput,
   UserRepository,
 } from '../../src/modules/identity/domain/ports/identity.ports';
@@ -29,7 +31,9 @@ export class InMemoryIdentity
   readonly sessions: SessionRecord[] = [];
   readonly recovery = new Map<string, { userId: string; usedAt: Date | null }>();
   readonly audits: Array<AuditEventView & { metadata?: AuditDraft['metadata'] }> = [];
+  readonly pushTokens = new Map<string, { token: string; platform: string }>();
   private readonly lines = new Map<string, LineCredentials>();
+  private readonly snapshots = new Map<string, SubscriptionSnapshot>();
 
   async findByUsername(username: string): Promise<UserRecord | null> {
     return this.users.find((user) => user.username === username) ?? null;
@@ -115,6 +119,7 @@ export class InMemoryIdentity
       existing ??
       addUser(this, {
         username,
+        displayName: input.snapshot?.displayName ?? username,
         role: 'CUSTOMER',
         roles: ['CUSTOMER'],
         status: 'ACTIVE',
@@ -122,7 +127,13 @@ export class InMemoryIdentity
         mfaEnabled: false,
         mfaSecretCiphertext: null,
       });
+    if (input.snapshot?.displayName) {
+      user.displayName = input.snapshot.displayName;
+    }
     this.lines.set(user.id, { username, password: input.password });
+    if (input.snapshot) {
+      await this.saveLineSnapshot(user.id, input.snapshot, input.now);
+    }
     return { ok: true, user };
   }
 
@@ -132,6 +143,42 @@ export class InMemoryIdentity
       throw new DomainError(ErrorCodes.unauthorized, 401, PublicMessages.unauthorized);
     }
     return line;
+  }
+
+  async saveLineSnapshot(userId: string, snapshot: LineSnapshotInput, now: Date): Promise<void> {
+    const user = await this.findById(userId);
+    if (user && snapshot.displayName) {
+      user.displayName = snapshot.displayName;
+    }
+    const line = this.lines.get(userId);
+    this.snapshots.set(userId, {
+      displayName: snapshot.displayName ?? user?.displayName ?? line?.username ?? null,
+      username: line?.username ?? null,
+      expiresAt: snapshot.expiresAt,
+      maxConnections: snapshot.maxConnections,
+      activeConnections: snapshot.activeConnections,
+      status: snapshot.status,
+      lastVerifiedAt: now.toISOString(),
+      source: 'cache',
+    });
+  }
+
+  async getSubscriptionSnapshot(userId: string): Promise<SubscriptionSnapshot | null> {
+    return this.snapshots.get(userId) ?? null;
+  }
+
+  async setPushToken(
+    userId: string,
+    sessionId: string,
+    token: string,
+    platform: string,
+    _now: Date,
+  ): Promise<void> {
+    const session = this.sessions.find((item) => item.id === sessionId && item.userId === userId);
+    if (!session || session.revokedAt) {
+      throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+    }
+    this.pushTokens.set(sessionId, { token, platform });
   }
 
   async revokeDevice(
@@ -293,10 +340,14 @@ export class InMemoryIdentity
 
 export function addUser(
   store: InMemoryIdentity,
-  user: Omit<UserRecord, 'id' | 'roles' | 'passwordHash' | 'lastLoginAt' | 'createdAt'> & {
+  user: Omit<
+    UserRecord,
+    'id' | 'roles' | 'passwordHash' | 'lastLoginAt' | 'createdAt' | 'displayName'
+  > & {
     id?: string;
     roles?: UserRecord['roles'];
     passwordHash?: string | null;
+    displayName?: string | null;
     lastLoginAt?: Date | null;
     createdAt?: Date;
   },
@@ -304,6 +355,7 @@ export function addUser(
   const record: UserRecord = {
     id: user.id ?? newId(),
     username: user.username,
+    displayName: user.displayName ?? null,
     role: user.role,
     roles: user.roles ?? [user.role],
     status: user.status,

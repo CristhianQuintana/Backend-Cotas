@@ -17,6 +17,66 @@ export function sanitizePublicUrl(value: unknown): string | null {
   return url.toString();
 }
 
+/**
+ * XUI a menudo anuncia un host público (p. ej. IP remota) que el móvil no alcanza,
+ * mientras el panel usable en LAN es XUI_BASE_URL. Reescribe iconos/pósters a ese origen.
+ */
+export function rewriteClientFacingXuiUrl(
+  value: string | null | undefined,
+  preferredBaseUrl: string,
+  allowedHosts: readonly string[],
+): string | null {
+  if (value == null || value.length === 0) {
+    return null;
+  }
+  let url: URL;
+  let preferred: URL;
+  try {
+    url = new URL(value);
+    preferred = new URL(preferredBaseUrl);
+  } catch {
+    return value;
+  }
+  if (!allowedHosts.includes(url.hostname)) {
+    return value;
+  }
+  if (!allowedHosts.includes(preferred.hostname)) {
+    return value;
+  }
+  if (url.hostname === preferred.hostname && url.port === preferredPort(preferred)) {
+    return value;
+  }
+  url.protocol = preferred.protocol;
+  url.hostname = preferred.hostname;
+  url.port = preferredPort(preferred);
+  return url.toString();
+}
+
+export function clientFacingStreamServer(
+  preferredBaseUrl: string,
+  allowedHosts: readonly string[],
+): { protocol: 'http' | 'https'; host: string; port: string } | null {
+  let preferred: URL;
+  try {
+    preferred = new URL(preferredBaseUrl);
+  } catch {
+    return null;
+  }
+  if (!allowedHosts.includes(preferred.hostname)) {
+    return null;
+  }
+  const protocol = preferred.protocol === 'https:' ? 'https' : 'http';
+  return {
+    protocol,
+    host: preferred.hostname,
+    port: preferredPort(preferred) || (protocol === 'https' ? '443' : '80'),
+  };
+}
+
+function preferredPort(url: URL): string {
+  return url.port;
+}
+
 export function decodePossibleBase64(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;

@@ -2,15 +2,18 @@ import 'reflect-metadata';
 import { createServer } from 'node:http';
 import { Logger } from '@nestjs/common';
 import { validateEnv } from './config/env.validation';
-import { XuiHttpClient } from './modules/integrations/xui/infrastructure/http/xui-http.client';
+import { PrismaService } from './infrastructure/database/prisma/prisma.service';
+import { createRedisClient, connectRedis } from './infrastructure/redis/redis.client';
+import { CatalogAnnouncementsService } from './modules/catalog/application/catalog-announcements.service';
 import { CatalogSyncService } from './modules/catalog/application/catalog-sync.service';
-import { RedisCatalogCache } from './modules/catalog/infrastructure/redis-catalog.cache';
 import {
   createCatalogSyncWorker,
   scheduleCatalogSync,
   toBullConnection,
 } from './modules/catalog/infrastructure/catalog-sync.queue';
-import { createRedisClient, connectRedis } from './infrastructure/redis/redis.client';
+import { RedisCatalogCache } from './modules/catalog/infrastructure/redis-catalog.cache';
+import { XuiHttpClient } from './modules/integrations/xui/infrastructure/http/xui-http.client';
+import { FcmPushService } from './modules/notifications/fcm-push.service';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('CatalogWorker');
@@ -29,6 +32,9 @@ async function bootstrap(): Promise<void> {
   const cache = new RedisCatalogCache(config, redis);
   await cache.onModuleInit();
 
+  const prisma = new PrismaService();
+  await prisma.onModuleInit();
+
   const xui = new XuiHttpClient({
     baseUrl: config.xuiBaseUrl,
     username: config.xuiUsername,
@@ -37,7 +43,9 @@ async function bootstrap(): Promise<void> {
     maxResponseBytes: config.xuiMaxResponseBytes,
     allowedStreamHosts: config.xuiAllowedStreamHosts,
   });
-  const sync = new CatalogSyncService(xui, cache, config);
+  const announcements = new CatalogAnnouncementsService(prisma);
+  const push = new FcmPushService(config);
+  const sync = new CatalogSyncService(xui, cache, config, announcements, push);
   const connection = toBullConnection(config);
   const queue = await scheduleCatalogSync(config, connection);
   const worker = createCatalogSyncWorker(config, connection, sync);
@@ -69,6 +77,7 @@ async function bootstrap(): Promise<void> {
     await worker.close();
     await queue.close();
     await cache.onModuleDestroy();
+    await prisma.onModuleDestroy();
     process.exit(0);
   };
   process.on('SIGTERM', () => void shutdown('SIGTERM'));

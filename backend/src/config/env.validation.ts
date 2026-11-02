@@ -147,6 +147,16 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     4,
   );
 
+  const fcmEnabled = bool(raw.FCM_ENABLED ?? 'false', 'FCM_ENABLED');
+  const fcmProjectId = optionalText(raw.FCM_PROJECT_ID, 3, 128);
+  const fcmClientEmail = optionalText(raw.FCM_CLIENT_EMAIL, 5, 254);
+  const fcmPrivateKeyRaw = raw.FCM_PRIVATE_KEY?.trim() || '';
+  const fcmPrivateKey =
+    fcmPrivateKeyRaw.length > 0 ? fcmPrivateKeyRaw.replace(/\\n/gu, '\n') : null;
+  if (fcmEnabled && (!fcmProjectId || !fcmClientEmail || !fcmPrivateKey)) {
+    fail('FCM_ENABLED');
+  }
+
   return {
     nodeEnv,
     port,
@@ -183,6 +193,10 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     catalogEpgCacheTtlSeconds,
     catalogSyncIntervalMs,
     catalogSyncConcurrency,
+    fcmEnabled,
+    fcmProjectId,
+    fcmClientEmail,
+    fcmPrivateKey,
   };
 }
 
@@ -243,6 +257,17 @@ function bool(value: string, name: string): boolean {
     return false;
   }
   fail(name);
+}
+
+function optionalText(value: string | undefined, min: number, max: number): string | null {
+  const text = value?.trim() ?? '';
+  if (text.length === 0) {
+    return null;
+  }
+  if (text.length < min || text.length > max) {
+    fail('FCM_CREDENTIAL');
+  }
+  return text;
 }
 
 function splitList(value: string | undefined): string[] {

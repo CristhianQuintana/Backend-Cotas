@@ -63,7 +63,7 @@ describe('XuiHttpClient', () => {
     try {
       await expect(
         client(baseUrl).authenticate({ username: 'xui_test_user', password }),
-      ).resolves.toEqual({ authenticated: false, status: null });
+      ).resolves.toMatchObject({ authenticated: false, status: null });
     } finally {
       await close(server);
     }

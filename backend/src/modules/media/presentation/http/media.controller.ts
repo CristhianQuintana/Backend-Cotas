@@ -10,12 +10,6 @@ import {
 } from '../../../../common/exceptions/domain-error';
 import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 
-function signaturesEqual(left: string, right: string): boolean {
-  const a = createHash('sha256').update(left).digest();
-  const b = createHash('sha256').update(right).digest();
-  return timingSafeEqual(a, b);
-}
-
 @ApiTags('media')
 @Controller('media')
 export class MediaController {
@@ -117,4 +111,10 @@ export function buildSignedMediaUrl(input: {
   const sig = signMedia(input.upstreamUrl, exp, input.secret);
   const u = encodeURIComponent(input.upstreamUrl);
   return `${input.apiOrigin}/${input.apiPrefix}/media/asset?u=${u}&exp=${exp}&sig=${sig}`;
+}
+
+function signaturesEqual(a: string, b: string): boolean {
+  const left = createHash('sha256').update(a).digest();
+  const right = createHash('sha256').update(b).digest();
+  return timingSafeEqual(left, right);
 }

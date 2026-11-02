@@ -10,6 +10,7 @@ import {
   SESSION_REPOSITORY,
   USER_REPOSITORY,
 } from '../../src/modules/identity/domain/ports/identity.ports';
+import { CatalogAnnouncementsService } from '../../src/modules/catalog/application/catalog-announcements.service';
 import { XUI_CLIENT } from '../../src/modules/integrations/xui/domain/models';
 import { FakeXui } from '../fakes/fake-xui';
 import { InMemoryIdentity } from '../fakes/in-memory-identity';
@@ -18,6 +19,17 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
   const identity = new InMemoryIdentity();
   const xui = options?.xui ?? new FakeXui();
   const databaseUp = options?.databaseUp ?? true;
+  const announcements = {
+    async list(page: number, limit: number) {
+      return { page, limit, total: 0, items: [] };
+    },
+    async detectAndPersist() {
+      return [];
+    },
+    async listActivePushTokens() {
+      return [];
+    },
+  };
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(PrismaService)
     .useValue({
@@ -41,6 +53,8 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
     .useValue(identity)
     .overrideProvider(XUI_CLIENT)
     .useValue(xui)
+    .overrideProvider(CatalogAnnouncementsService)
+    .useValue(announcements)
     .compile();
 
   const app = moduleRef.createNestApplication({ bodyParser: false });

@@ -98,6 +98,13 @@ export interface XuiEpgEntry {
 export interface XuiLineStatus {
   authenticated: boolean;
   status: string | null;
+  username: string | null;
+  /** Nombre visible del abonado (XUI); si no hay otro campo, suele ser el username. */
+  displayName: string | null;
+  expiresAt: string | null;
+  maxConnections: number | null;
+  activeConnections: number | null;
+  isTrial: boolean | null;
 }
 
 export interface XuiServerInfo {
