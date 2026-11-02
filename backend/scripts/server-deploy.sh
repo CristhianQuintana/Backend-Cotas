@@ -93,6 +93,12 @@ if [ -f "$state_dir/current-image" ]; then
   cp "$state_dir/current-image" "$state_dir/previous-image"
 fi
 
+# Liberar espacio antes del pull: imágenes colgantes y logs viejos del runner.
+docker image prune -af >/dev/null 2>&1 || true
+docker builder prune -af >/dev/null 2>&1 || true
+find /opt/cotas/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
+df -h / | tail -n 1 || true
+
 if ! docker pull "$image"; then
   echo "No se pudo descargar la imagen. Compruebe que publish terminó en verde para este SHA y que el paquete GHCR está ligado al repositorio con lectura para Actions." >&2
   exit 1

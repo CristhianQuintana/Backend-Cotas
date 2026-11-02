@@ -83,6 +83,15 @@ jobs:
             exit 1
           fi
           echo "Imagen localizable en GHCR para este SHA."
+      - name: Liberar espacio en el runner
+        run: |
+          set -eu
+          df -h / || true
+          docker system df || true
+          docker image prune -af || true
+          docker builder prune -af || true
+          find /opt/cotas/actions-runner/_diag -type f -name '*.log' -mtime +0 -delete 2>/dev/null || true
+          df -h / || true
       - name: Actualizar el servidor
         env:
           IMAGE: ${{ steps.target.outputs.image }}
