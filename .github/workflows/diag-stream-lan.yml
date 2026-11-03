@@ -1,0 +1,114 @@
+name: diag-stream-lan
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    steps:
+      - name: Probe XUI LAN vs public from runner
+        run: |
+          set -eu
+          echo "=== host ==="
+          hostname
+          ip -4 addr | sed -n '1,60p' || true
+
+          echo "=== tcp ==="
+          for host in 10.10.0.100 192.141.98.91 127.0.0.1; do
+            for port in 80 443 8880 3100; do
+              if timeout 3 bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null; then
+                echo "$host:$port=open"
+              else
+                echo "$host:$port=closed"
+              fi
+            done
+          done
+
+          echo "=== http roots ==="
+          curl -sS -m 8 -o /dev/null -w "lan_root=%{http_code} t=%{time_total}\n" http://10.10.0.100/ || true
+          curl -sS -m 8 -o /dev/null -w "pub_root=%{http_code} t=%{time_total}\n" http://192.141.98.91/ || true
+
+          echo "=== player_api server_info ==="
+          curl -sS -m 12 -o /tmp/player.json -w "lan_player=%{http_code}\n" \
+            "http://10.10.0.100/player_api.php?username=10200000&password=10200000" || true
+          python3 - <<'PY'
+          import json
+          try:
+              d = json.load(open("/tmp/player.json"))
+              si = d.get("server_info") or {}
+              print("server_info.url=", si.get("url"))
+              print("server_info.port=", si.get("port"))
+              print("server_info.protocol=", si.get("server_protocol"))
+              print("rtmp_port=", si.get("rtmp_port"))
+          except Exception as e:
+              print("player_parse_error", e)
+          PY
+
+          echo "=== authorize + redirect chain ==="
+          TOKEN=$(curl -sS -m 20 -X POST http://127.0.0.1:3100/api/v1/auth/login \
+            -H 'content-type: application/json' \
+            -d '{"username":"10200000","password":"10200000"}' \
+            | python3 -c 'import sys,json; print(json.load(sys.stdin).get("accessToken",""))')
+          test -n "$TOKEN"
+          curl -sS -m 20 -X POST http://127.0.0.1:3100/api/v1/playback/authorizations \
+            -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+            -d '{"contentType":"live","streamId":"3537"}' > /tmp/auth.json
+          python3 - <<'PY'
+          import http.client
+          import json
+          import urllib.parse
+
+          auth = json.load(open("/tmp/auth.json"))
+          url = auth.get("streamUrl") or ""
+          u = urllib.parse.urlparse(url)
+          print(
+              "authorize_host=",
+              u.hostname,
+              "port=",
+              u.port or 80,
+              "hint=",
+              auth.get("protocolHint"),
+              "delivery=",
+              auth.get("delivery"),
+          )
+
+          def probe(host, path, timeout=12):
+              try:
+                  c = http.client.HTTPConnection(host, 80, timeout=timeout)
+                  c.request(
+                      "GET",
+                      path,
+                      headers={"User-Agent": "cotas-diag", "Accept": "*/*"},
+                  )
+                  r = c.getresponse()
+                  loc = r.getheader("Location")
+                  data = r.read(160)
+                  loc_host = urllib.parse.urlparse(loc).hostname if loc else None
+                  loc_prefix = None
+                  if loc:
+                      parts = urllib.parse.urlparse(loc).path.split("/")
+                      loc_prefix = "/" + "/".join([p for p in parts if p][:1])
+                  print(
+                      f"probe host={host} status={r.status} loc_host={loc_host} "
+                      f"loc_prefix={loc_prefix} bytes={len(data)} ctype={r.getheader('Content-Type')}"
+                  )
+                  return r.status, loc, data
+              except Exception as e:
+                  print(f"probe host={host} error={e}")
+                  return None, None, b""
+
+          # Siempre probar el path sobre LAN (misma red)
+          path = u.path
+          st, loc, _ = probe("10.10.0.100", path)
+          if loc:
+              p = urllib.parse.urlparse(loc)
+              probe(p.hostname or "", p.path)
+              # ¿El token /auth sirve si se pide al IP LAN?
+              probe("10.10.0.100", p.path)
+          # ¿El host público abre directo desde el runner?
+          probe("192.141.98.91", path)
+          PY
