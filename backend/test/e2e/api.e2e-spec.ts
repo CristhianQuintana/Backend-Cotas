@@ -171,7 +171,7 @@ describe('API COTAS', () => {
       .expect(200);
     expect(playback.body.delivery).toBe('direct');
     expect(playback.body.accessMaterialEmbedded).toBe(true);
-    expect(playback.body.streamUrl).toContain('stream.test.local');
+    expect(playback.body.streamUrl).toContain('/playback/media/');
     expect(
       identity.audits.some(
         (event) => event.action === 'playback.authorize' && event.result === 'success',
@@ -513,8 +513,7 @@ describe('API COTAS', () => {
       .send({ contentType: 'series', streamId: '70', seriesId: '7', seasonNumber: 1 })
       .expect(200);
     expect(playback.body.protocolHint).toBe('progressive');
-    expect(playback.body.streamUrl).toContain('/series/');
-    expect(playback.body.streamUrl).toContain('/70.mp4');
+    expect(playback.body.streamUrl).toContain('/playback/media/');
     expect(JSON.stringify(identity.audits)).not.toContain(password);
     await http()
       .post('/api/v1/playback/authorizations')

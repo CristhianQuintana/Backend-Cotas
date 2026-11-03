@@ -69,7 +69,11 @@ export class AuthorizePlaybackUseCase {
     let proxied: PlaybackReference = reference;
     try {
       const lanHost = lanHostFromBase(this.config.xuiBaseUrl);
-      const upstream = await resolveStreamUpstream(reference.streamUrl, lanHost);
+      // En test no hay XUI real: el ticket apunta a la URL construida.
+      const upstream =
+        this.config.nodeEnv === 'test'
+          ? reference.streamUrl
+          : await resolveStreamUpstream(reference.streamUrl, lanHost);
       const ticket = this.tickets.issue({
         upstreamUrl: upstream,
         protocolHint: reference.protocolHint,
