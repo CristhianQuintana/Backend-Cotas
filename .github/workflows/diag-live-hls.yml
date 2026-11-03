@@ -1,0 +1,101 @@
+name: diag-live-hls
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    steps:
+      - name: Inspect raw XUI live playlist and segment
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import http.client, json, urllib.parse, urllib.request
+
+          def api(method, path, body=None, token=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(
+                  f"http://127.0.0.1:3100/api/v1{path}",
+                  data=data,
+                  method=method,
+                  headers={"Accept": "application/json"},
+              )
+              if data is not None:
+                  req.add_header("Content-Type", "application/json")
+              if token:
+                  req.add_header("Authorization", f"Bearer {token}")
+              with urllib.request.urlopen(req, timeout=30) as res:
+                  return json.load(res)
+
+          def http_get(url, timeout=20):
+              u = urllib.parse.urlparse(url)
+              conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout)
+              conn.request(
+                  "GET",
+                  u.path + (f"?{u.query}" if u.query else ""),
+                  headers={"User-Agent": "cotas-diag", "Accept": "*/*"},
+              )
+              r = conn.getresponse()
+              body = r.read(4000)
+              return r.status, dict(r.getheaders()), body
+
+          login = api("POST", "/auth/login", {"username": "10200000", "password": "10200000"})
+          auth = api(
+              "POST",
+              "/playback/authorizations",
+              {"contentType": "live", "streamId": "3537"},
+              login["accessToken"],
+          )
+          proxy = auth["streamUrl"]
+          print("proxy_path=", urllib.parse.urlparse(proxy).path)
+
+          # Follow LAN live URL like the resolver
+          live_path = "/live/10200000/10200000/3537.m3u8"
+          st, headers, _ = http_get("http://10.10.0.100" + live_path)
+          loc = headers.get("Location") or headers.get("location")
+          print("lan_status=", st, "loc_prefix=", (urllib.parse.urlparse(loc).path[:20] if loc else None))
+          if not loc:
+              raise SystemExit("no location")
+          final = urllib.parse.urljoin("http://10.10.0.100/", loc)
+          st2, headers2, body = http_get(final)
+          text = body.decode("utf-8", "replace")
+          print("final_status=", st2, "final_host=", urllib.parse.urlparse(final).hostname)
+          print("final_path_prefix=", "/".join(urllib.parse.urlparse(final).path.split("/")[:2]))
+          print("ctype=", headers2.get("Content-Type"))
+          lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+          print("raw_head_tags=", [ln for ln in lines if ln.startswith("#")][:6])
+          segs = [ln for ln in lines if not ln.startswith("#")]
+          print("raw_seg_count=", len(segs))
+          if segs:
+              s0 = segs[0]
+              abs0 = urllib.parse.urljoin(final, s0)
+              p = urllib.parse.urlparse(abs0)
+              print("seg0_kind=", "abs" if "://" in s0 else "rel")
+              print("seg0_host=", p.hostname)
+              print("seg0_path_prefix=", "/".join([x for x in p.path.split("/") if x][:2]))
+              print("seg0_path_len=", len(p.path))
+              st3, h3, b3 = http_get(abs0)
+              print("seg0_direct_status=", st3, "ctype=", h3.get("Content-Type"), "bytes=", len(b3), "hex=", b3[:8].hex())
+
+          # Compare with what proxy segment returns
+          st4, h4, b4 = http_get(proxy)
+          proxy_text = b4.decode("utf-8", "replace")
+          proxy_segs = [ln.strip() for ln in proxy_text.splitlines() if ln.strip() and not ln.startswith("#")]
+          print("proxy_playlist_status=", st4, "proxy_seg_count=", len(proxy_segs))
+          if proxy_segs:
+              st5, h5, b5 = http_get(proxy_segs[0])
+              print(
+                  "proxy_seg_status=",
+                  st5,
+                  "ctype=",
+                  h5.get("Content-Type"),
+                  "bytes=",
+                  len(b5),
+                  "hex=",
+                  b5[:8].hex(),
+              )
+          PY
