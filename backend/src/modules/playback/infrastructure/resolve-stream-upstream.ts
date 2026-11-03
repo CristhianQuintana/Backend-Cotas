@@ -12,9 +12,7 @@ export async function resolveStreamUpstream(
   streamUrl: string,
   preferredLanHost: string | null,
 ): Promise<string> {
-  const start = preferredLanHost
-    ? rewriteHost(streamUrl, preferredLanHost)
-    : streamUrl;
+  const start = preferredLanHost ? rewriteHost(streamUrl, preferredLanHost) : streamUrl;
   let current = start;
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
     const result = await headOrGet(current);
@@ -37,9 +35,7 @@ function rewriteHost(streamUrl: string, host: string): string {
   return url.toString();
 }
 
-function headOrGet(
-  target: string,
-): Promise<{ status: number; location: string | null }> {
+function headOrGet(target: string): Promise<{ status: number; location: string | null }> {
   return new Promise((resolve, reject) => {
     const url = new URL(target);
     const lib = url.protocol === 'https:' ? https : http;

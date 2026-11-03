@@ -15,14 +15,8 @@ describe('rewritePlaylistForProxy', () => {
       ticketId: 'abc123',
       publicApiBase: 'http://10.10.0.31:3100/api/v1',
     });
-    expect(out).toContain(
-      'URI="http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/key1"',
-    );
-    expect(out).toContain(
-      'http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/seg1.ts',
-    );
-    expect(out).toContain(
-      'http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/seg2.ts',
-    );
+    expect(out).toContain('URI="http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/key1"');
+    expect(out).toContain('http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/seg1.ts');
+    expect(out).toContain('http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/seg2.ts');
   });
 });
