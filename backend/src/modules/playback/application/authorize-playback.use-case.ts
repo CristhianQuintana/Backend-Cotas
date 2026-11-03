@@ -11,6 +11,8 @@ import {
   playbackLogFields,
   type PlaybackReference,
 } from '../domain/playback-reference';
+import { PlaybackMediaTicketStore } from '../infrastructure/playback-media-ticket.store';
+import { resolveStreamUpstream } from '../infrastructure/resolve-stream-upstream';
 
 @Injectable()
 export class AuthorizePlaybackUseCase {
@@ -21,6 +23,7 @@ export class AuthorizePlaybackUseCase {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+    @Inject(PlaybackMediaTicketStore) private readonly tickets: PlaybackMediaTicketStore,
   ) {}
 
   async execute(
@@ -30,6 +33,7 @@ export class AuthorizePlaybackUseCase {
       streamId: string;
       seriesId?: string;
       seasonNumber?: number;
+      publicApiBase: string;
     },
     meta: RequestMeta,
   ): Promise<PlaybackReference> {
@@ -61,11 +65,40 @@ export class AuthorizePlaybackUseCase {
       password: credentials.password,
       containerExtension: selected.containerExtension,
     });
+
+    let proxied: PlaybackReference = reference;
+    try {
+      const lanHost = lanHostFromBase(this.config.xuiBaseUrl);
+      const upstream = await resolveStreamUpstream(reference.streamUrl, lanHost);
+      const ticket = this.tickets.issue({
+        upstreamUrl: upstream,
+        protocolHint: reference.protocolHint,
+      });
+      proxied = {
+        ...reference,
+        // Los clientes de la LAN no alcanzan el IP público de XUI; el API sí.
+        // Se mantiene delivery=direct porque las apps lo validan así.
+        streamUrl: `${trimSlash(input.publicApiBase)}/playback/media/${ticket.id}`,
+      };
+    } catch (error) {
+      this.logger.warn(
+        JSON.stringify({
+          action: 'playback.authorize_proxy',
+          outcome: 'upstream_resolve_failed',
+          contentType: reference.contentType,
+          streamId: reference.streamId,
+          message: error instanceof Error ? error.message : 'unknown',
+        }),
+      );
+      throw new DomainError(ErrorCodes.playbackRejected, 502, PublicMessages.playbackRejected);
+    }
+
     this.logger.log(
       JSON.stringify({
         action: 'playback.authorize',
-        ...playbackLogFields(reference),
+        ...playbackLogFields(proxied),
         actorUserId: user.id,
+        deliveryMode: 'lan_proxy',
       }),
     );
     await this.audit.record({
@@ -74,9 +107,12 @@ export class AuthorizePlaybackUseCase {
       actorUserId: user.id,
       correlationId: meta.correlationId,
       ipAddress: meta.ipAddress,
-      metadata: playbackLogFields(reference),
+      metadata: {
+        ...playbackLogFields(proxied),
+        deliveryMode: 'lan_proxy',
+      },
     });
-    return reference;
+    return proxied;
   }
 
   private async select(
@@ -115,4 +151,16 @@ export class AuthorizePlaybackUseCase {
       ? { id: episode.id, name: episode.name, containerExtension: episode.extension }
       : null;
   }
+}
+
+function lanHostFromBase(baseUrl: string): string | null {
+  try {
+    return new URL(baseUrl).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+function trimSlash(value: string): string {
+  return value.endsWith('/') ? value.slice(0, -1) : value;
 }

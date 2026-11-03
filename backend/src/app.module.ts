@@ -66,6 +66,7 @@ import {
 } from './modules/identity/domain/ports/identity.ports';
 import { PlaybackController } from './modules/playback/presentation/http/playback.controller';
 import { AuthorizePlaybackUseCase } from './modules/playback/application/authorize-playback.use-case';
+import { PlaybackMediaTicketStore } from './modules/playback/infrastructure/playback-media-ticket.store';
 import { MediaController } from './modules/media/presentation/http/media.controller';
 
 @Module({
@@ -150,6 +151,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     CatalogAnnouncementsService,
     FcmPushService,
     CatalogSyncService,
+    PlaybackMediaTicketStore,
     AuthorizePlaybackUseCase,
     ListAuditUseCase,
     HealthService,
