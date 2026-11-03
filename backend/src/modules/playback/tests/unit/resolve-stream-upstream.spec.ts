@@ -5,7 +5,7 @@ describe('rewritePlaylistForProxy', () => {
     const body = [
       '#EXTM3U',
       '#EXT-X-KEY:METHOD=AES-128,URI="http://192.141.98.91/auth/key1"',
-      'http://192.141.98.91/auth/seg1.ts',
+      'http://192.141.98.91/hls/seg1',
       'seg2.ts',
       '',
     ].join('\n');
@@ -15,8 +15,14 @@ describe('rewritePlaylistForProxy', () => {
       ticketId: 'abc123',
       publicApiBase: 'http://10.10.0.31:3100/api/v1',
     });
-    expect(out).toContain('URI="http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/key1"');
-    expect(out).toContain('http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/seg1.ts');
-    expect(out).toContain('http://10.10.0.31:3100/api/v1/playback/media/abc123/u/auth/seg2.ts');
+    expect(out).toContain(
+      'URI="http://10.10.0.31:3100/api/v1/playback/media/abc123/seg?p=%2Fauth%2Fkey1"',
+    );
+    expect(out).toContain(
+      'http://10.10.0.31:3100/api/v1/playback/media/abc123/seg?p=%2Fhls%2Fseg1',
+    );
+    expect(out).toContain(
+      'http://10.10.0.31:3100/api/v1/playback/media/abc123/seg?p=%2Fauth%2Fseg2.ts',
+    );
   });
 });

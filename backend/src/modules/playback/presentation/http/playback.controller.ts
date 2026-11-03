@@ -77,19 +77,28 @@ export class PlaybackController {
   }
 
   @Public()
-  @Get('media/:ticketId/u/{*path}')
+  @Get('media/:ticketId/seg')
   proxySegment(@Param('ticketId') ticketId: string, @Req() req: Request, @Res() res: Response) {
     const ticket = this.tickets.get(ticketId);
     if (!ticket) {
       throw new NotFoundException();
     }
-    // No confiar solo en @Param('path'): con tokens HLS largos el wildcard
-    // a veces llega incompleto y el upstream responde 404.
-    const relative = segmentPathFromRequest(req, ticketId);
-    if (!relative) {
+    const raw = typeof req.query.p === 'string' ? req.query.p : '';
+    let path = raw;
+    try {
+      path = decodeURIComponent(raw);
+    } catch {
+      path = raw;
+    }
+    if (
+      !path.startsWith('/') ||
+      path.includes('://') ||
+      path.includes('\\') ||
+      path.includes('..')
+    ) {
       throw new NotFoundException();
     }
-    const upstreamUrl = `${ticket.upstreamOrigin}/${relative}`;
+    const upstreamUrl = `${ticket.upstreamOrigin}${path}`;
     return pipeUpstream({
       ticketId,
       upstreamUrl,
@@ -99,25 +108,6 @@ export class PlaybackController {
       rewritePlaylist: false,
     });
   }
-}
-
-function segmentPathFromRequest(req: Request, ticketId: string): string | null {
-  const marker = `/playback/media/${ticketId}/u/`;
-  const full = req.originalUrl || req.url || '';
-  const at = full.indexOf(marker);
-  if (at < 0) {
-    return null;
-  }
-  const rest = full.slice(at + marker.length);
-  const pathOnly = rest.split('?')[0] || '';
-  let decoded = pathOnly;
-  try {
-    decoded = decodeURIComponent(pathOnly);
-  } catch {
-    decoded = pathOnly;
-  }
-  const relative = decoded.replace(/^\/+/u, '');
-  return relative || null;
 }
 
 function publicApiBaseFromRequest(req: Request): string {

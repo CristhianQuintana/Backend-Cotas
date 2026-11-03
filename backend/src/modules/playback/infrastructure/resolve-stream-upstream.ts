@@ -77,7 +77,7 @@ export function rewritePlaylistForProxy(input: {
   publicApiBase: string;
 }): string {
   const playlist = new URL(input.playlistUrl);
-  const prefix = `${input.publicApiBase}/playback/media/${input.ticketId}/u`;
+  const endpoint = `${input.publicApiBase}/playback/media/${input.ticketId}/seg`;
   return input.body
     .split(/\r?\n/u)
     .map((line) => {
@@ -91,17 +91,22 @@ export function rewritePlaylistForProxy(input: {
         }
         return trimmed.replace(/URI="([^"]+)"/gu, (_match, raw: string) => {
           const absolute = new URL(raw, playlist).toString();
-          return `URI="${toProxyPath(prefix, absolute)}"`;
+          return `URI="${toProxySegUrl(endpoint, absolute)}"`;
         });
       }
       const absolute = new URL(trimmed, playlist).toString();
-      return toProxyPath(prefix, absolute);
+      return toProxySegUrl(endpoint, absolute);
     })
     .join('\n');
 }
 
-function toProxyPath(prefix: string, absoluteUrl: string): string {
+/**
+ * Usa query `p=` en lugar de path wildcard: los tokens HLS de XUI son muy largos
+ * y el enrutado `/{*path}` terminaba pidiendo mal el upstream (404).
+ */
+function toProxySegUrl(endpoint: string, absoluteUrl: string): string {
   const target = new URL(absoluteUrl);
   const rest = `${target.pathname}${target.search}`;
-  return `${prefix}${rest.startsWith('/') ? rest : `/${rest}`}`;
+  const path = rest.startsWith('/') ? rest : `/${rest}`;
+  return `${endpoint}?p=${encodeURIComponent(path)}`;
 }
