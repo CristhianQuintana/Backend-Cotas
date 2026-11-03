@@ -102,6 +102,41 @@ describe('XuiHttpClient', () => {
     }
   });
 
+  it('usa el host y puerto anunciados por server_info sin reescribir al baseUrl', async () => {
+    const publicHost = 'cdn.panel.test';
+    const { server, baseUrl } = await listen((_req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(
+        JSON.stringify({
+          user_info: { auth: 1, status: 'Active', username: 'xui_test_user' },
+          server_info: {
+            url: publicHost,
+            port: '25461',
+            https_port: '443',
+            server_protocol: 'http',
+          },
+        }),
+      );
+    });
+    try {
+      const xui = new XuiHttpClient({
+        baseUrl,
+        username: 'xui_test_user',
+        password,
+        timeoutMs: 1000,
+        maxResponseBytes: 200000,
+        allowedStreamHosts: ['127.0.0.1', publicHost],
+      });
+      await expect(xui.getServerInfo()).resolves.toEqual({
+        protocol: 'http',
+        host: publicHost,
+        port: '25461',
+      });
+    } finally {
+      await close(server);
+    }
+  });
+
   it('rechaza JSON inválido, redirección y respuesta demasiado grande sin filtrar la contraseña', async () => {
     const cases: Array<(res: import('node:http').ServerResponse) => void> = [
       (res) => res.end('not-json'),

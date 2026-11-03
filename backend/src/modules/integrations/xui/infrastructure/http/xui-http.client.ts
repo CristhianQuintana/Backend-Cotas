@@ -5,10 +5,7 @@ import {
   PublicMessages,
 } from '../../../../../common/exceptions/domain-error';
 import { redactSensitive } from '../../../../../common/logging/redact';
-import {
-  clientFacingStreamServer,
-  rewriteClientFacingXuiUrl,
-} from '../../../../../common/utils/sanitize-url';
+import { rewriteClientFacingXuiUrl } from '../../../../../common/utils/sanitize-url';
 import type {
   XuiClient,
   XuiCredentials,
@@ -157,13 +154,10 @@ export class XuiHttpClient implements XuiClient {
       'line',
       {},
       (payload) => {
-        // Valida el host que anuncia el panel; si hay base LAN usable, se usa esa
-        // para que el móvil reproduzca sin depender de la IP pública del panel.
-        const advertised = mapServerInfo(payload, this.options.allowedStreamHosts);
-        return (
-          clientFacingStreamServer(this.options.baseUrl, this.options.allowedStreamHosts) ??
-          advertised
-        );
+        // Host/puerto anunciados por XUI (server_info). No reescribir al host de
+        // XUI_BASE_URL: el panel LAN responde 302 hacia la IP pública y varios
+        // players fallan al seguir ese redirect. Los iconos sí se reescriben aparte.
+        return mapServerInfo(payload, this.options.allowedStreamHosts);
       },
       credentials,
     );
