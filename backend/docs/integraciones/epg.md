@@ -20,7 +20,7 @@ Authorization: Bearer <accessToken>
 
 Obtenga el token con `POST /api/v1/auth/login` (cliente IPTV) o el flujo de personal del panel. Sin token → `401`.
 
-Base URL de pruebas típica: `http://10.10.0.31:3100/api/v1` (ajustar host/puerto según entorno).
+Base URL de producción: `https://api.cotasperu.com/api/v1`. LAN de laboratorio (si aplica): `http://10.10.0.31:3100/api/v1`.
 
 ## Endpoints
 

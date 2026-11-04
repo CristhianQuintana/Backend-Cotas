@@ -1,22 +1,27 @@
 # Autorización de reproducción
 
-`POST /api/v1/playback/authorizations` comprueba que el canal, la película o el episodio existan para la línea que inició sesión. En series, el episodio tiene que pertenecer a `seriesId` y, si se envió, a `seasonNumber`. Después construye la referencia directa.
+`POST /api/v1/playback/authorizations` comprueba que el canal, la película o el episodio existan para la línea que inició sesión. En series, el episodio tiene que pertenecer a `seriesId` y, si se envió, a `seasonNumber`.
 
-## Material de acceso
+## Respuesta a las apps
 
-XUI entrega el manifiesto y el archivo con el usuario y la contraseña de la línea dentro de la ruta. No se encontró en esta integración un token de un solo uso que sustituya esa ruta. La respuesta lo declara con `accessMaterialEmbedded: true` y `expiresAt: null`. La caducidad práctica es la de la línea en el panel, no un plazo que esta API pueda acortar.
+La API responde con `delivery: "direct"` y una `streamUrl` bajo el **mismo origen de la API** (p. ej. `https://api.cotasperu.com/api/v1/playback/media/{ticket}`).
 
-Mitigaciones de esta entrega:
+El backend resuelve el origen XUI (panel LAN / redirects) y sirve playlist y segmentos mediante proxy de ticket de corta vida. Las apps **no** deben llamar a XUI ni reescribir el host de `streamUrl`.
 
-- La referencia solo se entrega a un cliente ya autenticado.
-- El host tiene que estar en la lista permitida. Otro host se rechaza.
-- El cliente no puede pedir a la API que descargue una URL arbitraria.
-- Logs, auditoría y errores guardan el tipo de contenido y el identificador, no la ruta.
-- La API de producción no retransmite el vídeo.
-- El contenedor de despliegue no publica `/dev/player` ni el conversor local.
+Campos relevantes: `streamUrl`, `protocolHint` (`hls` | `progressive`), `accessMaterialEmbedded: true`, `expiresAt: null` (caducidad práctica = vigencia de la línea).
 
-Alcance aceptado para subir la solución al servidor de pruebas interno: la referencia sigue llevando la credencial de la línea, y el servicio no se publica a Internet sin TLS y sin el proxy de `deploy/nginx/api.conf.example`. Esta aceptación no cubre un despliegue público. Si XUI incorpora después una URL de corta duración, esta construcción debe sustituirse.
+## Seguridad
 
-## Qué no demuestra la página de desarrollo
+- Solo un cliente autenticado obtiene la referencia.
+- El host anunciado por XUI debe estar en `XUI_ALLOWED_STREAM_HOSTS` (el host de `XUI_BASE_URL` se incluye automáticamente).
+- El cliente no pide a la API descargar URLs arbitrarias.
+- Logs y auditoría no guardan la ruta con credenciales embebidas de XUI.
+- Segmentos HLS: `GET /playback/media/{ticket}/seg?p=<path>` (sin JWT; el ticket es el secreto).
 
-Reproducir en `/dev/player` demuestra el navegador de este equipo, con un conversor local que no va en la imagen. La prueba de la API desplegable es `node scripts/smoke-deploy.mjs` contra el contenedor: autorización y apertura de la referencia, sin imprimirla.
+## Nginx
+
+Para playlists y TS largos use timeouts altos y `proxy_buffering off` en `/api/v1/playback/media/` (ver `deploy/nginx/api.conf.example`).
+
+## Guía para plataformas
+
+`docs/integraciones/guia-plataformas-api-publica.md`

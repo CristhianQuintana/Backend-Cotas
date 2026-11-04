@@ -10,7 +10,7 @@ Authorization: Bearer <accessToken>
 
 Token de `POST /api/v1/auth/login` (línea XUI) o personal del panel. Sin token → `401`.
 
-Base URL de pruebas típica: `http://10.10.0.31:3100/api/v1`.
+Base URL de producción: `https://api.cotasperu.com/api/v1`.
 
 ## Perfil (`/auth/me`)
 
