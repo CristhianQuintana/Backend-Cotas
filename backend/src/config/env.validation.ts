@@ -54,9 +54,14 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     5_000_000,
   );
   const configuredHosts = splitList(raw.XUI_ALLOWED_STREAM_HOSTS);
-  const xuiAllowedStreamHosts = (
-    configuredHosts.length > 0 ? configuredHosts : [xuiBaseUrl.hostname]
-  ).map((host) => normalizeHost(host, 'XUI_ALLOWED_STREAM_HOSTS'));
+  const xuiAllowedStreamHosts = [
+    ...new Set(
+      (configuredHosts.length > 0
+        ? [...configuredHosts, xuiBaseUrl.hostname]
+        : [xuiBaseUrl.hostname]
+      ).map((host) => normalizeHost(host, 'XUI_ALLOWED_STREAM_HOSTS')),
+    ),
+  ];
 
   const logLevel = oneOf(
     raw.LOG_LEVEL ?? 'info',

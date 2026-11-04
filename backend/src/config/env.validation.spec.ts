@@ -39,7 +39,7 @@ describe('validateEnv', () => {
   it('acepta una configuración de prueba completa', () => {
     const config = validateEnv(valid());
     expect(config.port).toBe(3000);
-    expect(config.xuiAllowedStreamHosts).toEqual(['stream.test.local']);
+    expect(config.xuiAllowedStreamHosts).toEqual(['stream.test.local', 'xui.test.local']);
     expect(config.databaseUrl).not.toContain('CHANGE_ME');
     expect(config.fcmEnabled).toBe(false);
     expect(config.fcmProjectId).toBeNull();

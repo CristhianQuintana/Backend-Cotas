@@ -159,7 +159,14 @@ export class AuthorizePlaybackUseCase {
 
 function lanHostFromBase(baseUrl: string): string | null {
   try {
-    return new URL(baseUrl).hostname || null;
+    const url = new URL(baseUrl);
+    if (!url.hostname) {
+      return null;
+    }
+    if (url.port && url.port !== '80' && url.port !== '443') {
+      return `${url.hostname}:${url.port}`;
+    }
+    return url.hostname;
   } catch {
     return null;
   }

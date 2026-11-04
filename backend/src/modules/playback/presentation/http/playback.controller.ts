@@ -164,11 +164,17 @@ function pipeUpstream(input: {
     (proxyRes) => {
       const status = proxyRes.statusCode ?? 502;
       if (status >= 300 && status < 400 && proxyRes.headers.location) {
-        // Seguir un redirect adicional del origen
+        // Seguir redirect; si XUI apunta a un host público inaccesible desde el
+        // servidor, conservar el host del upstream que ya resolvió el ticket.
         proxyRes.resume();
+        const next = new URL(proxyRes.headers.location, upstream);
+        if (next.hostname !== upstream.hostname) {
+          next.protocol = upstream.protocol;
+          next.host = upstream.host;
+        }
         pipeUpstream({
           ...input,
-          upstreamUrl: new URL(proxyRes.headers.location, upstream).toString(),
+          upstreamUrl: next.toString(),
         });
         return;
       }

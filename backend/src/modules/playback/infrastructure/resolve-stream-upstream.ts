@@ -5,8 +5,10 @@ import { URL } from 'node:url';
 const MAX_HOPS = 5;
 
 /**
- * Sigue redirects desde el host del panel (LAN) hasta la URL final reproducible.
- * En pruebas el servidor API sí alcanza el IP público de XUI; los clientes LAN no.
+ * Sigue redirects desde el host del panel (LAN) hasta una URL final que el API
+ * pueda alcanzar. XUI suele 302 hacia un IP público que desde el propio servidor
+ * queda inaccesible (NAT/hairpin o IP de streaming caída); en ese caso se reutiliza
+ * el path del Location sobre el host LAN del panel.
  */
 export async function resolveStreamUpstream(
   streamUrl: string,
@@ -17,7 +19,23 @@ export async function resolveStreamUpstream(
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
     const result = await headOrGet(current);
     if (result.status >= 300 && result.status < 400 && result.location) {
-      current = new URL(result.location, current).toString();
+      const next = new URL(result.location, current);
+      if (preferredLanHost && next.hostname !== preferredLanHost) {
+        const lanCandidate = rewriteHost(next.toString(), preferredLanHost);
+        try {
+          const lanResult = await headOrGet(lanCandidate);
+          if (lanResult.status >= 200 && lanResult.status < 300) {
+            return lanCandidate;
+          }
+          if (lanResult.status >= 300 && lanResult.status < 400 && lanResult.location) {
+            current = new URL(lanResult.location, lanCandidate).toString();
+            continue;
+          }
+        } catch {
+          // Si el path en LAN no responde, se intenta el Location original.
+        }
+      }
+      current = next.toString();
       continue;
     }
     if (result.status >= 200 && result.status < 400) {
@@ -28,10 +46,18 @@ export async function resolveStreamUpstream(
   throw new Error('upstream_redirect_loop');
 }
 
+/** `host` puede ser `hostname` o `hostname:port` (puerto no estándar del panel). */
 function rewriteHost(streamUrl: string, host: string): string {
   const url = new URL(streamUrl);
-  url.hostname = host;
-  url.port = '';
+  const ipv6 = host.startsWith('[');
+  if (!ipv6 && host.includes(':')) {
+    const idx = host.lastIndexOf(':');
+    url.hostname = host.slice(0, idx);
+    url.port = host.slice(idx + 1);
+  } else {
+    url.hostname = host;
+    url.port = '';
+  }
   return url.toString();
 }
 
