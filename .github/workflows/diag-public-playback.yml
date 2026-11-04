@@ -10,109 +10,84 @@ jobs:
   probe:
     runs-on: [self-hosted, linux, cotas-pruebas]
     steps:
-      - name: Diagnose public vs local authorize and upstream
+      - name: Diagnose upstream reachability and auth path
         run: |
           set -eu
           python3 - <<'PY'
-          import http.client, json, subprocess, urllib.parse, urllib.request
+          import http.client, json, socket, urllib.parse, urllib.request
 
-          def api(base, method, path, body=None, token=None):
-              data = None if body is None else json.dumps(body).encode()
-              req = urllib.request.Request(
-                  f"{base}{path}",
-                  data=data,
-                  method=method,
-                  headers={"Accept": "application/json"},
-              )
-              if data is not None:
-                  req.add_header("Content-Type", "application/json")
-              if token:
-                  req.add_header("Authorization", f"Bearer {token}")
+          def tcp(host, port, timeout=3):
               try:
-                  with urllib.request.urlopen(req, timeout=30) as res:
-                      return res.status, json.load(res)
-              except urllib.error.HTTPError as e:
-                  raw = e.read().decode("utf-8", "replace")
-                  try:
-                      payload = json.loads(raw)
-                  except Exception:
-                      payload = {"raw": raw[:400]}
-                  return e.code, payload
+                  with socket.create_connection((host, port), timeout=timeout):
+                      return "open"
+              except Exception as e:
+                  return f"closed:{type(e).__name__}"
 
-          def http_get(url, timeout=20):
+          def http_get(url, timeout=12):
               u = urllib.parse.urlparse(url)
               conn_cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
               port = u.port or (443 if u.scheme == "https" else 80)
-              conn = conn_cls(u.hostname, port, timeout=timeout)
-              conn.request(
-                  "GET",
-                  u.path + (f"?{u.query}" if u.query else ""),
-                  headers={"User-Agent": "cotas-diag", "Accept": "*/*"},
-              )
-              r = conn.getresponse()
-              body = r.read(2000)
-              return r.status, dict(r.getheaders()), body
-
-          print("=== docker logs (playback) ===")
-          try:
-              out = subprocess.check_output(
-                  ["docker", "logs", "--tail", "80", "cotas-backend"],
-                  stderr=subprocess.STDOUT,
-                  text=True,
-                  timeout=20,
-              )
-              for line in out.splitlines():
-                  if "playback" in line.lower() or "upstream" in line.lower() or "502" in line:
-                      print(line[-400:])
-          except Exception as e:
-              print("docker_logs_error", e)
-
-          for label, base in [
-              ("local", "http://127.0.0.1:3100/api/v1"),
-              ("public", "https://api.cotasperu.com/api/v1"),
-          ]:
-              print(f"=== {label} ===")
-              st, login = api(base, "POST", "/auth/login", {"username": "10200000", "password": "10200000"})
-              print("login", st, "keys", sorted(login.keys()) if isinstance(login, dict) else type(login))
-              token = login.get("accessToken") if isinstance(login, dict) else None
-              if not token:
-                  continue
-              st2, auth = api(
-                  base,
-                  "POST",
-                  "/playback/authorizations",
-                  {"contentType": "live", "streamId": "3537"},
-                  token,
-              )
-              print("authorize", st2, json.dumps(auth)[:500])
-              url = auth.get("streamUrl") if isinstance(auth, dict) else None
-              if not url:
-                  continue
-              u = urllib.parse.urlparse(url)
-              print("stream_host=", u.hostname, "path=", u.path)
-              st3, headers, body = http_get(url)
-              text = body.decode("utf-8", "replace")
-              print("playlist", st3, "ctype=", headers.get("Content-Type"), "bytes=", len(body))
-              segs = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
-              if segs:
-                  st4, h4, b4 = http_get(segs[0])
-                  print(
-                      "seg0",
-                      st4,
-                      "ctype=",
-                      h4.get("Content-Type"),
-                      "hex=",
-                      b4[:8].hex(),
-                      "host=",
-                      urllib.parse.urlparse(segs[0]).hostname,
+              try:
+                  conn = conn_cls(u.hostname, port, timeout=timeout)
+                  conn.request(
+                      "GET",
+                      u.path + (f"?{u.query}" if u.query else ""),
+                      headers={"User-Agent": "cotas-diag", "Accept": "*/*"},
                   )
+                  r = conn.getresponse()
+                  body = r.read(120)
+                  return r.status, r.getheader("Location"), r.getheader("Content-Type"), len(body)
+              except Exception as e:
+                  return f"err:{type(e).__name__}", None, None, 0
 
-          print("=== xui live redirect ===")
+          print("tcp", {
+              "10.10.0.100:80": tcp("10.10.0.100", 80),
+              "192.141.98.91:80": tcp("192.141.98.91", 80),
+              "192.141.98.18:80": tcp("192.141.98.18", 80),
+              "192.141.98.18:443": tcp("192.141.98.18", 443),
+          })
+
           live = "http://10.10.0.100/live/10200000/10200000/3537.m3u8"
-          st, headers, _ = http_get(live)
-          loc = headers.get("Location") or headers.get("location")
-          print("lan_live", st, "loc=", loc)
+          st, loc, ctype, n = http_get(live)
+          print("lan_live", st, "loc_host=", urllib.parse.urlparse(loc).hostname if loc else None, "ctype=", ctype)
           if loc:
-              st2, h2, b2 = http_get(urllib.parse.urljoin(live, loc))
-              print("final", st2, "host=", urllib.parse.urlparse(urllib.parse.urljoin(live, loc)).hostname, "bytes=", len(b2))
+              abs_loc = urllib.parse.urljoin(live, loc)
+              print("follow_public", http_get(abs_loc))
+              p = urllib.parse.urlparse(abs_loc)
+              lan_auth = f"http://10.10.0.100{p.path}"
+              print("lan_auth_same_path", http_get(lan_auth))
+              router_auth = f"http://192.141.98.18{p.path}"
+              print("router_auth_same_path", http_get(router_auth))
+
+          req = urllib.request.Request(
+              "http://127.0.0.1:3100/api/v1/auth/login",
+              data=json.dumps({"username": "10200000", "password": "10200000"}).encode(),
+              method="POST",
+              headers={"Content-Type": "application/json", "Accept": "application/json"},
+          )
+          with urllib.request.urlopen(req, timeout=20) as res:
+              token = json.load(res)["accessToken"]
+          req2 = urllib.request.Request(
+              "http://127.0.0.1:3100/api/v1/playback/authorizations",
+              data=json.dumps({"contentType": "live", "streamId": "3537"}).encode(),
+              method="POST",
+              headers={
+                  "Content-Type": "application/json",
+                  "Accept": "application/json",
+                  "Authorization": f"Bearer {token}",
+              },
+          )
+          try:
+              with urllib.request.urlopen(req2, timeout=30) as res:
+                  print("authorize", res.status, json.load(res).get("streamUrl", "")[:80])
+          except urllib.error.HTTPError as e:
+              print("authorize", e.code, e.read().decode()[:300])
+
+          # container name guess
+          import subprocess
+          try:
+              names = subprocess.check_output(["docker", "ps", "--format", "{{.Names}}"], text=True)
+              print("containers", names.replace("\n", ","))
+          except Exception as e:
+              print("docker_ps_error", e)
           PY
