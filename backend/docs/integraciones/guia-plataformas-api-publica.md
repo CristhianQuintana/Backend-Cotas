@@ -79,7 +79,9 @@ Todas requieren Bearer salvo salud.
 
 Paginación: `page`, `limit` (máx. 50). Detalle EPG: `docs/integraciones/epg.md`.
 
-**Iconos / pósters:** pueden venir firmados vía `GET /media/asset?...` en el mismo host API. Si la URL aún apunta a un host LAN y falla fuera, no bloquear el play; mostrar placeholder.
+**Iconos / pósters:** el backend firma las URLs LAN de XUI como  
+`https://api.cotasperu.com/api/v1/media/asset?u=...&exp=...&sig=...`.  
+Usar exactamente `iconUrl` / `posterUrl` / `channelIconUrl` del JSON (sin reescribir a `10.x`). Cargar por HTTPS en el mismo dominio API; no requieren JWT.
 
 ---
 

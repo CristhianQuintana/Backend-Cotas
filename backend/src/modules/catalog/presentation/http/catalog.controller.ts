@@ -1,8 +1,11 @@
-import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
+import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 import type { AuthenticatedUser } from '../../../identity/domain/models/authenticated-user';
 import { LINE_ACCESS, type LineAccess } from '../../../identity/domain/ports/identity.ports';
+import { mapPublicMediaFields } from '../../../media/application/public-media-url';
 import { CatalogAnnouncementsService } from '../../application/catalog-announcements.service';
 import { CatalogUseCase } from '../../application/catalog.use-case';
 import {
@@ -24,6 +27,7 @@ export class CatalogController {
     @Inject(LINE_ACCESS) private readonly lines: LineAccess,
     @Inject(CatalogAnnouncementsService)
     private readonly announcements: CatalogAnnouncementsService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   @Get('announcements')
@@ -38,9 +42,14 @@ export class CatalogController {
   }
 
   @Get('live/streams')
-  async liveStreams(@CurrentUser() user: AuthenticatedUser, @Query() query: CatalogQueryDto) {
+  async liveStreams(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CatalogQueryDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.liveStreams(normalize(query), credentials);
+    const page = await this.catalog.liveStreams(normalize(query), credentials);
+    return this.signPage(page, ['iconUrl'], req);
   }
 
   @Get('vod/categories')
@@ -50,15 +59,26 @@ export class CatalogController {
   }
 
   @Get('vod/streams')
-  async vodStreams(@CurrentUser() user: AuthenticatedUser, @Query() query: CatalogQueryDto) {
+  async vodStreams(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CatalogQueryDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.vodStreams(normalize(query), credentials);
+    const page = await this.catalog.vodStreams(normalize(query), credentials);
+    // Listados VOD de XUI usan stream_icon → iconUrl; detalle usa posterUrl.
+    return this.signPage(page, ['iconUrl', 'posterUrl'], req);
   }
 
   @Get('vod/streams/:streamId')
-  async vodDetails(@CurrentUser() user: AuthenticatedUser, @Param() params: StreamIdParamDto) {
+  async vodDetails(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: StreamIdParamDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.vodDetails(params.streamId, credentials);
+    const details = await this.catalog.vodDetails(params.streamId, credentials);
+    return this.signItem(details, ['posterUrl', 'iconUrl'], req);
   }
 
   @Get('series/categories')
@@ -68,33 +88,72 @@ export class CatalogController {
   }
 
   @Get('series')
-  async series(@CurrentUser() user: AuthenticatedUser, @Query() query: CatalogQueryDto) {
+  async series(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CatalogQueryDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.series(normalize(query), credentials);
+    const page = await this.catalog.series(normalize(query), credentials);
+    return this.signPage(page, ['posterUrl'], req);
   }
 
   @Get('series/:seriesId')
-  async seriesDetails(@CurrentUser() user: AuthenticatedUser, @Param() params: SeriesIdParamDto) {
+  async seriesDetails(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: SeriesIdParamDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.seriesDetails(params.seriesId, credentials);
+    const details = await this.catalog.seriesDetails(params.seriesId, credentials);
+    const signed = this.signItem(details, ['posterUrl'], req);
+    return {
+      ...signed,
+      seasons: details.seasons.map((season) => this.signItem(season, ['posterUrl'], req)),
+      episodes: details.episodes.map((episode) => this.signItem(episode, ['posterUrl'], req)),
+    };
   }
 
   @Get('series/:seriesId/seasons')
-  async seasons(@CurrentUser() user: AuthenticatedUser, @Param() params: SeriesIdParamDto) {
+  async seasons(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: SeriesIdParamDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.seasons(params.seriesId, credentials);
+    const result = await this.catalog.seasons(params.seriesId, credentials);
+    return {
+      ...result,
+      items: result.items.map((season) => this.signItem(season, ['posterUrl'], req)),
+    };
   }
 
   @Get('series/:seriesId/seasons/:seasonNumber/episodes')
-  async episodes(@CurrentUser() user: AuthenticatedUser, @Param() params: SeasonParamDto) {
+  async episodes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: SeasonParamDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.episodes(params.seriesId, Number(params.seasonNumber), credentials);
+    const result = await this.catalog.episodes(
+      params.seriesId,
+      Number(params.seasonNumber),
+      credentials,
+    );
+    return {
+      ...result,
+      items: result.items.map((episode) => this.signItem(episode, ['posterUrl'], req)),
+    };
   }
 
   @Get('live/epg/search')
-  async epgSearch(@CurrentUser() user: AuthenticatedUser, @Query() query: EpgSearchQueryDto) {
+  async epgSearch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: EpgSearchQueryDto,
+    @Req() req: Request,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.searchEpg(
+    const result = await this.catalog.searchEpg(
       {
         q: query.q,
         page: query.page ?? 1,
@@ -102,6 +161,7 @@ export class CatalogController {
       },
       credentials,
     );
+    return this.signPage(result, ['channelIconUrl'], req);
   }
 
   @Get('live/epg')
@@ -120,6 +180,25 @@ export class CatalogController {
     const credentials = await this.lines.credentialsFor(user.id);
     return this.catalog.shortEpg(params.streamId, credentials, query.limit ?? 12);
   }
+
+  private mediaCtx(req: Request) {
+    return {
+      publicApiBase: publicApiBaseFromRequest(req),
+      secret: this.config.jwtAccessSecret,
+      allowedHosts: this.config.xuiAllowedStreamHosts,
+    };
+  }
+
+  private signItem<T>(item: T, keys: readonly string[], req: Request): T {
+    return mapPublicMediaFields(item as Record<string, unknown>, keys, this.mediaCtx(req)) as T;
+  }
+
+  private signPage<T>(page: { items: T[] }, keys: readonly string[], req: Request) {
+    return {
+      ...page,
+      items: page.items.map((item) => this.signItem(item, keys, req)),
+    };
+  }
 }
 
 function normalize(query: CatalogQueryDto) {
@@ -129,4 +208,17 @@ function normalize(query: CatalogQueryDto) {
     categoryId: query.categoryId,
     search: query.search?.trim() || undefined,
   };
+}
+
+function publicApiBaseFromRequest(req: Request): string {
+  const host = req.get('host') || '127.0.0.1';
+  const protoHeader = req.get('x-forwarded-proto');
+  const protocol =
+    protoHeader === 'https' || protoHeader === 'http'
+      ? protoHeader
+      : req.protocol === 'https'
+        ? 'https'
+        : 'http';
+  const prefix = (req.baseUrl || '').split('/catalog')[0] || '/api/v1';
+  return `${protocol}://${host}${prefix}`;
 }

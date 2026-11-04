@@ -1,7 +1,6 @@
 import { Controller, Get, Inject, Query, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { Public } from '../../../../common/decorators/public.decorator';
 import {
   DomainError,
@@ -9,6 +8,8 @@ import {
   PublicMessages,
 } from '../../../../common/exceptions/domain-error';
 import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
+import { shouldProxyMediaHost } from '../../application/public-media-url';
+import { buildSignedMediaUrl, signMedia, signaturesEqual } from '../../application/sign-media-url';
 
 @ApiTags('media')
 @Controller('media')
@@ -47,7 +48,7 @@ export class MediaController {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new DomainError(ErrorCodes.validation, 400, PublicMessages.validation);
     }
-    if (!this.config.xuiAllowedStreamHosts.includes(url.hostname)) {
+    if (!isAllowedMediaUpstream(url.hostname, this.config.xuiAllowedStreamHosts)) {
       throw new DomainError(ErrorCodes.playbackRejected, 502, PublicMessages.playbackRejected);
     }
     const controller = new AbortController();
@@ -96,25 +97,8 @@ export class MediaController {
   }
 }
 
-export function signMedia(url: string, exp: number, secret: string): string {
-  return createHmac('sha256', secret).update(`${exp}.${url}`).digest('base64url');
+function isAllowedMediaUpstream(hostname: string, allowedHosts: readonly string[]): boolean {
+  return shouldProxyMediaHost(hostname, allowedHosts);
 }
 
-export function buildSignedMediaUrl(input: {
-  apiOrigin: string;
-  apiPrefix: string;
-  upstreamUrl: string;
-  secret: string;
-  ttlSeconds?: number;
-}): string {
-  const exp = Math.floor(Date.now() / 1000) + (input.ttlSeconds ?? 6 * 3600);
-  const sig = signMedia(input.upstreamUrl, exp, input.secret);
-  const u = encodeURIComponent(input.upstreamUrl);
-  return `${input.apiOrigin}/${input.apiPrefix}/media/asset?u=${u}&exp=${exp}&sig=${sig}`;
-}
-
-function signaturesEqual(a: string, b: string): boolean {
-  const left = createHash('sha256').update(a).digest();
-  const right = createHash('sha256').update(b).digest();
-  return timingSafeEqual(left, right);
-}
+export { buildSignedMediaUrl, signMedia };
