@@ -1,0 +1,118 @@
+name: diag-public-playback
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    steps:
+      - name: Diagnose public vs local authorize and upstream
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import http.client, json, subprocess, urllib.parse, urllib.request
+
+          def api(base, method, path, body=None, token=None):
+              data = None if body is None else json.dumps(body).encode()
+              req = urllib.request.Request(
+                  f"{base}{path}",
+                  data=data,
+                  method=method,
+                  headers={"Accept": "application/json"},
+              )
+              if data is not None:
+                  req.add_header("Content-Type", "application/json")
+              if token:
+                  req.add_header("Authorization", f"Bearer {token}")
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as res:
+                      return res.status, json.load(res)
+              except urllib.error.HTTPError as e:
+                  raw = e.read().decode("utf-8", "replace")
+                  try:
+                      payload = json.loads(raw)
+                  except Exception:
+                      payload = {"raw": raw[:400]}
+                  return e.code, payload
+
+          def http_get(url, timeout=20):
+              u = urllib.parse.urlparse(url)
+              conn_cls = http.client.HTTPSConnection if u.scheme == "https" else http.client.HTTPConnection
+              port = u.port or (443 if u.scheme == "https" else 80)
+              conn = conn_cls(u.hostname, port, timeout=timeout)
+              conn.request(
+                  "GET",
+                  u.path + (f"?{u.query}" if u.query else ""),
+                  headers={"User-Agent": "cotas-diag", "Accept": "*/*"},
+              )
+              r = conn.getresponse()
+              body = r.read(2000)
+              return r.status, dict(r.getheaders()), body
+
+          print("=== docker logs (playback) ===")
+          try:
+              out = subprocess.check_output(
+                  ["docker", "logs", "--tail", "80", "cotas-backend"],
+                  stderr=subprocess.STDOUT,
+                  text=True,
+                  timeout=20,
+              )
+              for line in out.splitlines():
+                  if "playback" in line.lower() or "upstream" in line.lower() or "502" in line:
+                      print(line[-400:])
+          except Exception as e:
+              print("docker_logs_error", e)
+
+          for label, base in [
+              ("local", "http://127.0.0.1:3100/api/v1"),
+              ("public", "https://api.cotasperu.com/api/v1"),
+          ]:
+              print(f"=== {label} ===")
+              st, login = api(base, "POST", "/auth/login", {"username": "10200000", "password": "10200000"})
+              print("login", st, "keys", sorted(login.keys()) if isinstance(login, dict) else type(login))
+              token = login.get("accessToken") if isinstance(login, dict) else None
+              if not token:
+                  continue
+              st2, auth = api(
+                  base,
+                  "POST",
+                  "/playback/authorizations",
+                  {"contentType": "live", "streamId": "3537"},
+                  token,
+              )
+              print("authorize", st2, json.dumps(auth)[:500])
+              url = auth.get("streamUrl") if isinstance(auth, dict) else None
+              if not url:
+                  continue
+              u = urllib.parse.urlparse(url)
+              print("stream_host=", u.hostname, "path=", u.path)
+              st3, headers, body = http_get(url)
+              text = body.decode("utf-8", "replace")
+              print("playlist", st3, "ctype=", headers.get("Content-Type"), "bytes=", len(body))
+              segs = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
+              if segs:
+                  st4, h4, b4 = http_get(segs[0])
+                  print(
+                      "seg0",
+                      st4,
+                      "ctype=",
+                      h4.get("Content-Type"),
+                      "hex=",
+                      b4[:8].hex(),
+                      "host=",
+                      urllib.parse.urlparse(segs[0]).hostname,
+                  )
+
+          print("=== xui live redirect ===")
+          live = "http://10.10.0.100/live/10200000/10200000/3537.m3u8"
+          st, headers, _ = http_get(live)
+          loc = headers.get("Location") or headers.get("location")
+          print("lan_live", st, "loc=", loc)
+          if loc:
+              st2, h2, b2 = http_get(urllib.parse.urljoin(live, loc))
+              print("final", st2, "host=", urllib.parse.urlparse(urllib.parse.urljoin(live, loc)).hostname, "bytes=", len(b2))
+          PY
