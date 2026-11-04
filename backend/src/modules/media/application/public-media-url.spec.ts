@@ -3,29 +3,32 @@ import { signMedia } from './sign-media-url';
 
 describe('toPublicMediaUrl', () => {
   const secret = 'x'.repeat(32);
-  const allowed = ['10.10.0.100', '192.141.98.91'];
+  const panelLan = '10.0.0.25';
+  const streamHost = '203.0.113.50';
+  const allowed = [panelLan, streamHost];
 
   it('firma hosts XUI/LAN hacia /media/asset en el origen API', () => {
+    const upstream = `http://${panelLan}/images/poster.jpg`;
     const signed = toPublicMediaUrl({
-      raw: 'http://10.10.0.100/images/poster.jpg',
+      raw: upstream,
       publicApiBase: 'https://api.cotasperu.com/api/v1',
       secret,
       allowedHosts: allowed,
     });
     expect(signed).toMatch(/^https:\/\/api\.cotasperu\.com\/api\/v1\/media\/asset\?/);
     const parsed = new URL(signed!);
-    expect(parsed.searchParams.get('u')).toBe('http://10.10.0.100/images/poster.jpg');
+    expect(parsed.searchParams.get('u')).toBe(upstream);
     const exp = Number(parsed.searchParams.get('exp'));
     const sig = parsed.searchParams.get('sig');
-    expect(sig).toBe(signMedia('http://10.10.0.100/images/poster.jpg', exp, secret));
+    expect(sig).toBe(signMedia(upstream, exp, secret));
   });
 
   it('firma IPs LAN privadas aunque no estén en el allowlist de streams', () => {
     const signed = toPublicMediaUrl({
-      raw: 'http://10.10.0.100/images/a.png',
+      raw: `http://${panelLan}/images/a.png`,
       publicApiBase: 'https://api.cotasperu.com/api/v1',
       secret,
-      allowedHosts: ['192.141.98.91'],
+      allowedHosts: [streamHost],
     });
     expect(signed).toContain('/media/asset?');
   });
@@ -40,8 +43,7 @@ describe('toPublicMediaUrl', () => {
       }),
     ).toBe('https://image.tmdb.org/t/p/w500/x.jpg');
 
-    const already =
-      'https://api.cotasperu.com/api/v1/media/asset?u=http%3A%2F%2F10.10.0.100%2Fa.jpg&exp=1&sig=abc';
+    const already = `https://api.cotasperu.com/api/v1/media/asset?u=http%3A%2F%2F${panelLan}%2Fa.jpg&exp=1&sig=abc`;
     expect(
       toPublicMediaUrl({
         raw: already,
