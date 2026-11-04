@@ -1,0 +1,59 @@
+name: diag-vod-images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    steps:
+      - name: Dump get_vod_info / get_series_info image fields
+        run: |
+          set -eu
+          python3 - <<'PY'
+          import json, os, urllib.parse, urllib.request
+          # Lee XUI_BASE_URL del .env del servidor sin imprimir secretos de línea.
+          env = {}
+          with open("/opt/cotas/env/.env", encoding="utf-8") as f:
+              for line in f:
+                  line=line.strip()
+                  if not line or line.startswith("#") or "=" not in line:
+                      continue
+                  k,v=line.split("=",1)
+                  env[k]=v.strip().strip('"').strip("'")
+          base=env.get("XUI_BASE_URL","").rstrip("/")+"/"
+          user=env["XUI_USERNAME"]
+          password=env["XUI_PASSWORD"]
+
+          def call(action, extra=None):
+              q={"username":user,"password":password}
+              if action:
+                  q["action"]=action
+              if extra:
+                  q.update(extra)
+              url=base+"player_api.php?"+urllib.parse.urlencode(q)
+              with urllib.request.urlopen(url, timeout=60) as res:
+                  return json.load(res)
+
+          vod=call("get_vod_info", {"vod_id":"3721"})
+          info=vod.get("info") or {}
+          movie=vod.get("movie_data") or {}
+          keys=sorted(set(list(info.keys())+list(movie.keys())))
+          img_keys=[k for k in keys if any(x in k.lower() for x in ("image","cover","backdrop","poster","icon","path"))]
+          print("vod_img_keys", img_keys)
+          for k in img_keys:
+              src=info if k in info else movie
+              v=src.get(k)
+              print("vod", k, "=", (str(v)[:160] if v is not None else None))
+
+          series=call("get_series_info", {"series_id":"97"})
+          sinfo=series.get("info") or {}
+          skeys=[k for k in sorted(sinfo.keys()) if any(x in k.lower() for x in ("image","cover","backdrop","poster","icon","path"))]
+          print("series_img_keys", skeys)
+          for k in skeys:
+              v=sinfo.get(k)
+              print("series", k, "=", (str(v)[:160] if v is not None else None))
+          PY
