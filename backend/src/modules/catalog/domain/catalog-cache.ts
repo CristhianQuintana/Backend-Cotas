@@ -13,5 +13,6 @@ export interface CatalogCache {
 export function catalogCacheKey(scope: string, resource: string): string {
   const safeScope = scope.replace(/[^a-zA-Z0-9._-]/gu, '_').slice(0, 64);
   const safeResource = resource.replace(/[^a-zA-Z0-9._:-]/gu, '_').slice(0, 96);
-  return `cotas:catalog:v1:${safeScope}:${safeResource}`;
+  // v2: posterUrl/backdropUrl en catálogo; invalida entradas Redis anteriores.
+  return `cotas:catalog:v2:${safeScope}:${safeResource}`;
 }
