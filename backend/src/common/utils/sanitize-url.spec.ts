@@ -1,5 +1,6 @@
 import {
   clientFacingStreamServer,
+  resolveXuiStoredImage,
   rewriteClientFacingXuiUrl,
   sanitizePublicUrl,
 } from './sanitize-url';
@@ -11,6 +12,16 @@ describe('sanitize-url', () => {
   it('acepta http/https públicos sin credenciales', () => {
     expect(sanitizePublicUrl('http://cdn.test/img.png')).toBe('http://cdn.test/img.png');
     expect(sanitizePublicUrl('https://user:pass@cdn.test/img.png')).toBeNull();
+  });
+
+  it('resuelve rutas s:N:/images del panel a URL HTTP del host', () => {
+    expect(resolveXuiStoredImage('s:1:/images/afiche.jpg', `http://${panelLan}`)).toBe(
+      `http://${panelLan}/images/afiche.jpg`,
+    );
+    expect(resolveXuiStoredImage('s:1:/images/../etc/passwd', `http://${panelLan}`)).toBeNull();
+    expect(resolveXuiStoredImage('http://cdn.test/a.png', `http://${panelLan}`)).toBe(
+      'http://cdn.test/a.png',
+    );
   });
 
   it('reescribe hosts permitidos al origen LAN del panel', () => {

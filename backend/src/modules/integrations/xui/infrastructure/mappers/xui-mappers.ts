@@ -3,7 +3,12 @@ import {
   ErrorCodes,
   PublicMessages,
 } from '../../../../../common/exceptions/domain-error';
-import { decodePossibleBase64, sanitizePublicUrl } from '../../../../../common/utils/sanitize-url';
+import {
+  decodePossibleBase64,
+  firstXuiImageUrl,
+  sameImagePath,
+  sanitizePublicUrl,
+} from '../../../../../common/utils/sanitize-url';
 import type {
   XuiCategory,
   XuiEpgEntry,
@@ -46,11 +51,20 @@ export function mapVodInfo(payload: unknown): XuiVodDetails | null {
   if (!id || !name) {
     return null;
   }
+  const posterUrl =
+    sanitizePublicUrl(info.movie_image) ??
+    sanitizePublicUrl(info.cover_big) ??
+    sanitizePublicUrl(firstXuiImageUrl(info.movie_image));
+  const backdropRaw = firstXuiImageUrl(info.backdrop_path);
+  const backdropCandidate = sanitizePublicUrl(backdropRaw) ?? backdropRaw;
+  const backdropUrl =
+    backdropCandidate && !sameImagePath(posterUrl, backdropCandidate) ? backdropCandidate : null;
   return {
     id,
     name,
     categoryIds: readCategoryIds(movie),
-    posterUrl: sanitizePublicUrl(info.movie_image) ?? sanitizePublicUrl(info.cover_big),
+    posterUrl,
+    backdropUrl,
     plot: asText(info.description, 4000) ?? asText(info.plot, 4000),
     year: asYear(movie.year) ?? asYear(info.release_date) ?? asYear(info.releasedate),
     duration: asDuration(info.duration, info.duration_secs),
@@ -73,11 +87,18 @@ export function mapSeriesInfo(payload: unknown, seriesId: string): XuiSeriesDeta
   if (!name && episodes.length === 0) {
     return null;
   }
+  const posterUrl =
+    sanitizePublicUrl(info.cover) ?? sanitizePublicUrl(firstXuiImageUrl(info.cover));
+  const backdropRaw = firstXuiImageUrl(info.backdrop_path);
+  const backdropCandidate = sanitizePublicUrl(backdropRaw) ?? backdropRaw;
+  const backdropUrl =
+    backdropCandidate && !sameImagePath(posterUrl, backdropCandidate) ? backdropCandidate : null;
   return {
     id: seriesId,
     name: name ?? `Serie ${seriesId}`,
     categoryIds: readCategoryIds(info),
-    posterUrl: sanitizePublicUrl(info.cover),
+    posterUrl,
+    backdropUrl,
     plot: asText(info.plot, 4000),
     year: asYear(info.year) ?? asYear(info.release_date) ?? asYear(info.releaseDate),
     rating: asRating(info.rating),
@@ -189,11 +210,14 @@ function mapLiveStream(value: unknown): XuiLiveStream | null {
   if (!id || !name) {
     return null;
   }
+  const iconUrl = sanitizePublicUrl(value.stream_icon);
   return {
     id,
     name,
     categoryId: asId(value.category_id),
-    iconUrl: sanitizePublicUrl(value.stream_icon),
+    iconUrl,
+    posterUrl: iconUrl,
+    backdropUrl: null,
     epgChannelId: asName(value.epg_channel_id),
   };
 }
@@ -208,12 +232,15 @@ function mapVodStream(value: unknown): XuiVodStream | null {
     return null;
   }
   const extension = asExtension(value.container_extension);
+  const iconUrl = sanitizePublicUrl(value.stream_icon);
   return {
     id,
     name,
     categoryId: asId(value.category_id),
     categoryIds: readCategoryIds(value),
-    iconUrl: sanitizePublicUrl(value.stream_icon),
+    iconUrl,
+    posterUrl: iconUrl,
+    backdropUrl: null,
     containerExtension: extension,
     rating: asRating(value.rating),
     year: asYear(value.year) ?? asYear(value.release_date),
@@ -235,6 +262,7 @@ function mapSeriesSummary(value: unknown): XuiSeriesSummary | null {
     categoryId: asId(value.category_id),
     categoryIds: readCategoryIds(value),
     posterUrl: sanitizePublicUrl(value.cover),
+    backdropUrl: null,
     rating: asRating(value.rating),
     year: asYear(value.year) ?? asYear(value.release_date) ?? asYear(value.releaseDate),
   };

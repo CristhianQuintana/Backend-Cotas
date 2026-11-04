@@ -49,7 +49,7 @@ export class CatalogController {
   ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const page = await this.catalog.liveStreams(normalize(query), credentials);
-    return this.signPage(page, ['iconUrl'], req);
+    return this.signPage(page, ['iconUrl', 'posterUrl'], req);
   }
 
   @Get('vod/categories')
@@ -66,7 +66,7 @@ export class CatalogController {
   ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const page = await this.catalog.vodStreams(normalize(query), credentials);
-    // Listados VOD de XUI usan stream_icon → iconUrl; detalle usa posterUrl.
+    // Listados VOD: miniatura; backdrop solo en detalle.
     return this.signPage(page, ['iconUrl', 'posterUrl'], req);
   }
 
@@ -78,7 +78,7 @@ export class CatalogController {
   ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const details = await this.catalog.vodDetails(params.streamId, credentials);
-    return this.signItem(details, ['posterUrl', 'iconUrl'], req);
+    return this.signItem(details, ['posterUrl', 'backdropUrl', 'iconUrl'], req);
   }
 
   @Get('series/categories')
@@ -106,7 +106,7 @@ export class CatalogController {
   ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const details = await this.catalog.seriesDetails(params.seriesId, credentials);
-    const signed = this.signItem(details, ['posterUrl'], req);
+    const signed = this.signItem(details, ['posterUrl', 'backdropUrl'], req);
     return {
       ...signed,
       seasons: details.seasons.map((season) => this.signItem(season, ['posterUrl'], req)),

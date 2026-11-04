@@ -34,6 +34,8 @@ describe('mapeadores XUI', () => {
       name: 'Canal Demo',
       categoryId: '2',
       iconUrl: null,
+      posterUrl: null,
+      backdropUrl: null,
       epgChannelId: 'demo',
     });
     expect(JSON.stringify(streams)).not.toContain('pass');
@@ -109,6 +111,8 @@ describe('mapeadores XUI', () => {
         name: 'Pelicula',
         categoryId: null,
         iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
         containerExtension: null,
         rating: null,
         categoryIds: [],
@@ -119,7 +123,14 @@ describe('mapeadores XUI', () => {
 
   it('normaliza el detalle de una película y una serie sin copiar el origen directo', () => {
     const movie = mapVodInfo({
-      info: { name: 'Pelicula', plot: 'Sinopsis', duration: '01:10:00', rating: 8 },
+      info: {
+        name: 'Pelicula',
+        plot: 'Sinopsis',
+        duration: '01:10:00',
+        rating: 8,
+        movie_image: 'http://cdn.test/poster.jpg',
+        backdrop_path: ['http://cdn.test/backdrop.jpg'],
+      },
       movie_data: {
         stream_id: '15',
         name: 'Pelicula',
@@ -132,8 +143,21 @@ describe('mapeadores XUI', () => {
     expect(movie?.id).toBe('15');
     expect(movie?.categoryIds).toEqual(['3', '4']);
     expect(movie?.extension).toBe('mp4');
+    expect(movie?.posterUrl).toBe('http://cdn.test/poster.jpg');
+    expect(movie?.backdropUrl).toBe('http://cdn.test/backdrop.jpg');
     expect(JSON.stringify(movie)).not.toContain('pass');
     expect(mapVodInfo({ info: {}, movie_data: {} })).toBeNull();
+
+    const sameImage = mapVodInfo({
+      info: {
+        name: 'Misma',
+        movie_image: 'http://cdn.test/only.jpg',
+        backdrop_path: ['http://cdn.test/only.jpg'],
+      },
+      movie_data: { stream_id: '16', name: 'Misma', container_extension: 'mp4' },
+    });
+    expect(sameImage?.posterUrl).toBe('http://cdn.test/only.jpg');
+    expect(sameImage?.backdropUrl).toBeNull();
 
     const series = mapSeriesInfo(
       {

@@ -5,7 +5,11 @@ import {
   PublicMessages,
 } from '../../../../../common/exceptions/domain-error';
 import { redactSensitive } from '../../../../../common/logging/redact';
-import { rewriteClientFacingXuiUrl } from '../../../../../common/utils/sanitize-url';
+import {
+  resolveXuiStoredImage,
+  rewriteClientFacingXuiUrl,
+  sameImagePath,
+} from '../../../../../common/utils/sanitize-url';
 import type {
   XuiClient,
   XuiCredentials,
@@ -164,29 +168,51 @@ export class XuiHttpClient implements XuiClient {
   }
 
   private rewriteUrl(url: string | null): string | null {
-    return rewriteClientFacingXuiUrl(url, this.options.baseUrl, this.options.allowedStreamHosts);
+    if (!url) {
+      return null;
+    }
+    const resolved = resolveXuiStoredImage(url, this.options.baseUrl);
+    if (!resolved) {
+      return null;
+    }
+    return rewriteClientFacingXuiUrl(
+      resolved,
+      this.options.baseUrl,
+      this.options.allowedStreamHosts,
+    );
   }
 
   private rewriteLive(item: XuiLiveStream): XuiLiveStream {
-    return { ...item, iconUrl: this.rewriteUrl(item.iconUrl) };
+    const iconUrl = this.rewriteUrl(item.iconUrl);
+    return { ...item, iconUrl, posterUrl: iconUrl, backdropUrl: null };
   }
 
   private rewriteVod(item: XuiVodStream): XuiVodStream {
-    return { ...item, iconUrl: this.rewriteUrl(item.iconUrl) };
+    const iconUrl = this.rewriteUrl(item.iconUrl);
+    return { ...item, iconUrl, posterUrl: iconUrl, backdropUrl: null };
   }
 
   private rewriteVodDetails(item: XuiVodDetails): XuiVodDetails {
-    return { ...item, posterUrl: this.rewriteUrl(item.posterUrl) };
+    const posterUrl = this.rewriteUrl(item.posterUrl);
+    const backdropUrl = this.rewriteUrl(item.backdropUrl);
+    return {
+      ...item,
+      posterUrl,
+      backdropUrl: backdropUrl && !sameImagePath(posterUrl, backdropUrl) ? backdropUrl : null,
+    };
   }
 
   private rewriteSeries(item: XuiSeriesSummary): XuiSeriesSummary {
-    return { ...item, posterUrl: this.rewriteUrl(item.posterUrl) };
+    return { ...item, posterUrl: this.rewriteUrl(item.posterUrl), backdropUrl: null };
   }
 
   private rewriteSeriesDetails(item: XuiSeriesDetails): XuiSeriesDetails {
+    const posterUrl = this.rewriteUrl(item.posterUrl);
+    const backdropUrl = this.rewriteUrl(item.backdropUrl);
     return {
       ...item,
-      posterUrl: this.rewriteUrl(item.posterUrl),
+      posterUrl,
+      backdropUrl: backdropUrl && !sameImagePath(posterUrl, backdropUrl) ? backdropUrl : null,
       seasons: item.seasons.map((season) => ({
         ...season,
         posterUrl: this.rewriteUrl(season.posterUrl),

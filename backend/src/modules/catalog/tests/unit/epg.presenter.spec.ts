@@ -82,7 +82,13 @@ describe('presentChannelEpg', () => {
     expect(programStatus(live, at)).toBe('live');
     expect(programStatus(upcoming, at)).toBe('upcoming');
     expect(programStatus(ended, at)).toBe('ended');
-    const channel = { id: '10', name: 'Demo', iconUrl: null };
+    const channel = {
+      id: '10',
+      name: 'Demo',
+      iconUrl: null,
+      posterUrl: null,
+      backdropUrl: null,
+    };
     const hits = sortSearchHits([
       toSearchHit(ended, channel, at),
       toSearchHit(upcoming, channel, at),

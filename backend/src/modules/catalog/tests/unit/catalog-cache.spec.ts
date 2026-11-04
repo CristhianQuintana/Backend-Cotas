@@ -7,7 +7,15 @@ describe('caché de catálogo', () => {
   it('sirve la segunda lectura desde memoria sin volver a XUI', async () => {
     const xui = new FakeXui();
     xui.liveStreams = [
-      { id: '1', name: 'Alfa', categoryId: '1', iconUrl: null, epgChannelId: null },
+      {
+        id: '1',
+        name: 'Alfa',
+        categoryId: '1',
+        iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
+        epgChannelId: null,
+      },
     ];
     let calls = 0;
     const original = xui.getLiveStreams.bind(xui);

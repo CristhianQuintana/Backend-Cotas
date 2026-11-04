@@ -79,9 +79,9 @@ Todas requieren Bearer salvo salud.
 
 Paginación: `page`, `limit` (máx. 50). Detalle EPG: `docs/integraciones/epg.md`.
 
-**Iconos / pósters:** el backend firma las URLs LAN de XUI como  
+**Iconos / pósters / fondos:** el backend firma las URLs como  
 `https://api.cotasperu.com/api/v1/media/asset?u=...&exp=...&sig=...`.  
-Usar exactamente `iconUrl` / `posterUrl` / `channelIconUrl` del JSON (sin reescribir a `10.x`). Cargar por HTTPS en el mismo dominio API; no requieren JWT.
+En ficha de película/serie use **`posterUrl`** (afiche) y **`backdropUrl`** (fondo); no reutilizar el póster como fondo. Canales: `posterUrl`/`iconUrl` y `backdropUrl: null`. Detalle: `docs/integraciones/poster-y-backdrop.md`.
 
 ---
 

@@ -8,7 +8,12 @@ export interface XuiLiveStream {
   id: string;
   name: string;
   categoryId: string | null;
+  /** Logo del canal (compat). */
   iconUrl: string | null;
+  /** Mismo archivo que iconUrl; contrato unificado póster/logo. */
+  posterUrl: string | null;
+  /** Los canales no tienen backdrop en XUI. */
+  backdropUrl: null;
   epgChannelId: string | null;
 }
 
@@ -18,6 +23,9 @@ export interface XuiVodStream {
   categoryId: string | null;
   categoryIds: string[];
   iconUrl: string | null;
+  posterUrl: string | null;
+  /** El listado XUI no trae fondo; solo el detalle. */
+  backdropUrl: null;
   containerExtension: string | null;
   rating: string | null;
   year: string | null;
@@ -28,6 +36,8 @@ export interface XuiVodDetails {
   name: string;
   categoryIds: string[];
   posterUrl: string | null;
+  /** Fondo ancho; null si XUI no lo tiene o coincide con el póster. */
+  backdropUrl: string | null;
   plot: string | null;
   year: string | null;
   duration: string | null;
@@ -44,6 +54,7 @@ export interface XuiSeriesSummary {
   categoryId: string | null;
   categoryIds: string[];
   posterUrl: string | null;
+  backdropUrl: null;
   rating: string | null;
   year: string | null;
 }
@@ -71,6 +82,7 @@ export interface XuiSeriesDetails {
   name: string;
   categoryIds: string[];
   posterUrl: string | null;
+  backdropUrl: string | null;
   plot: string | null;
   year: string | null;
   rating: string | null;

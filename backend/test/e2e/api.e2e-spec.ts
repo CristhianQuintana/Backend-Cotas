@@ -28,7 +28,15 @@ describe('API COTAS', () => {
     });
     xui.liveCategories = [{ id: '1', name: 'Noticias', parentId: null }];
     xui.liveStreams = [
-      { id: '1001', name: 'Canal Demo', categoryId: '1', iconUrl: null, epgChannelId: 'demo' },
+      {
+        id: '1001',
+        name: 'Canal Demo',
+        categoryId: '1',
+        iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
+        epgChannelId: 'demo',
+      },
     ];
     xui.vodCategories = [{ id: '9', name: 'Cine', parentId: null }];
     xui.vodStreams = [
@@ -37,6 +45,8 @@ describe('API COTAS', () => {
         name: 'Pelicula Demo',
         categoryId: '9',
         iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
         containerExtension: 'mp4',
         rating: '7',
         categoryIds: ['9'],
@@ -463,6 +473,7 @@ describe('API COTAS', () => {
         categoryId: '3',
         categoryIds: ['3'],
         posterUrl: null,
+        backdropUrl: null,
         rating: null,
         year: '2024',
       },
@@ -472,6 +483,7 @@ describe('API COTAS', () => {
       name: 'Serie Demo',
       categoryIds: ['3'],
       posterUrl: null,
+      backdropUrl: null,
       plot: 'Historia',
       year: '2024',
       rating: null,

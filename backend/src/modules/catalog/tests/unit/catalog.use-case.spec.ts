@@ -6,8 +6,24 @@ describe('CatalogUseCase', () => {
   it('pagina, filtra y no inventa EPG vacío como error', async () => {
     const xui = new FakeXui();
     xui.liveStreams = [
-      { id: '2', name: 'Zeta', categoryId: '1', iconUrl: null, epgChannelId: null },
-      { id: '1', name: 'Alfa', categoryId: '2', iconUrl: null, epgChannelId: null },
+      {
+        id: '2',
+        name: 'Zeta',
+        categoryId: '1',
+        iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
+        epgChannelId: null,
+      },
+      {
+        id: '1',
+        name: 'Alfa',
+        categoryId: '2',
+        iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
+        epgChannelId: null,
+      },
     ];
     xui.epg.set('1', []);
     const catalog = new CatalogUseCase(xui);
@@ -29,8 +45,24 @@ describe('CatalogUseCase', () => {
   it('busca programas en la guía y pagina resultados', async () => {
     const xui = new FakeXui();
     xui.liveStreams = [
-      { id: '1', name: 'Canal A', categoryId: '1', iconUrl: null, epgChannelId: 'epg-a' },
-      { id: '2', name: 'Canal B', categoryId: '1', iconUrl: null, epgChannelId: null },
+      {
+        id: '1',
+        name: 'Canal A',
+        categoryId: '1',
+        iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
+        epgChannelId: 'epg-a',
+      },
+      {
+        id: '2',
+        name: 'Canal B',
+        categoryId: '1',
+        iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
+        epgChannelId: null,
+      },
     ];
     xui.epg.set('1', [
       {
@@ -101,6 +133,8 @@ describe('CatalogUseCase', () => {
         categoryId: '1',
         categoryIds: ['1'],
         iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
         containerExtension: 'mp4',
         rating: null,
         year: '2020',
@@ -111,6 +145,8 @@ describe('CatalogUseCase', () => {
         categoryId: '1',
         categoryIds: ['1', '2'],
         iconUrl: null,
+        posterUrl: null,
+        backdropUrl: null,
         containerExtension: 'mp4',
         rating: null,
         year: null,
@@ -121,6 +157,7 @@ describe('CatalogUseCase', () => {
       name: 'Serie',
       categoryIds: ['3'],
       posterUrl: null,
+      backdropUrl: null,
       plot: null,
       year: null,
       rating: null,
