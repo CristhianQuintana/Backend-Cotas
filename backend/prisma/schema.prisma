@@ -191,6 +191,7 @@ model Device {
   user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessions UserSession[]
 
+  @@unique([userId, deviceIdentifierHash])
   @@index([userId, status])
   @@index([pushToken])
   @@map("devices")

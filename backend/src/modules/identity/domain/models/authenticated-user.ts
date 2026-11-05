@@ -50,6 +50,8 @@ export interface AuthenticatedUser {
   username: string;
   role: UserRole;
   sessionId: string;
+  /** Dispositivo de la sesión actual (cupo IPTV); null en personal del panel. */
+  deviceId: string | null;
 }
 
 const RANK: Record<UserRole, number> = { CUSTOMER: 1, OPERATOR: 2, ADMIN: 3 };

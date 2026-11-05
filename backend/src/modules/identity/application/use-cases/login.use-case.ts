@@ -18,6 +18,7 @@ import {
   SESSION_REPOSITORY,
   TOKEN_SERVICE,
   USER_REPOSITORY,
+  type DevicePlatformCode,
   type LineAccess,
   type PasswordHasher,
   type SessionRepository,
@@ -28,6 +29,9 @@ import {
 export interface LoginCommand {
   username: string;
   password: string;
+  deviceId?: string;
+  platform?: string;
+  deviceName?: string;
   totpCode?: string;
   recoveryCode?: string;
   meta: RequestMeta;
@@ -81,7 +85,7 @@ export class LoginUseCase {
       await this.failLogin(command.meta, user.id, 'blocked');
     }
 
-    // Panel admin/operador: solo usuario y contraseña local en esta fase (sin TOTP).
+    // Panel admin/operador: sin cupo de dispositivos IPTV.
     return this.issueSession(user, command.meta);
   }
 
@@ -110,10 +114,30 @@ export class LoginUseCase {
       return this.failLogin(command.meta, accepted.user.id, 'staff_via_xui');
     }
 
-    return this.issueSession(accepted.user, command.meta);
+    const clientDeviceId = command.deviceId?.trim();
+    if (!clientDeviceId) {
+      throw new DomainError(ErrorCodes.validation, 400, PublicMessages.validation, [
+        { field: 'deviceId', rules: ['required'] },
+      ]);
+    }
+
+    const deviceId = await this.lines.claimDeviceSlot({
+      userId: accepted.user.id,
+      clientDeviceId,
+      platform: mapPlatform(command.platform),
+      deviceName: command.deviceName ?? null,
+      maxDevices: line.maxConnections,
+      now: this.clock.now(),
+    });
+
+    return this.issueSession(accepted.user, command.meta, deviceId);
   }
 
-  private async issueSession(user: UserRecord, meta: RequestMeta): Promise<LoginResult> {
+  private async issueSession(
+    user: UserRecord,
+    meta: RequestMeta,
+    deviceId?: string,
+  ): Promise<LoginResult> {
     const now = this.clock.now();
     const refreshToken = this.tokens.generateRefreshToken();
     const session: SessionRecord = {
@@ -133,14 +157,18 @@ export class LoginUseCase {
       sid: session.id,
       role: user.role,
     });
-    await this.sessions.create(session, {
-      action: 'auth.login',
-      result: 'success',
-      actorUserId: user.id,
-      correlationId: meta.correlationId,
-      ipAddress: meta.ipAddress,
-      metadata: { role: user.role, auth: user.passwordHash ? 'local' : 'xui' },
-    });
+    await this.sessions.create(
+      session,
+      {
+        action: 'auth.login',
+        result: 'success',
+        actorUserId: user.id,
+        correlationId: meta.correlationId,
+        ipAddress: meta.ipAddress,
+        metadata: { role: user.role, auth: user.passwordHash ? 'local' : 'xui' },
+      },
+      { deviceId: deviceId ?? null },
+    );
     await this.users.touchLastLogin(user.id, now);
     return {
       type: 'authenticated',
@@ -165,5 +193,20 @@ export class LoginUseCase {
       metadata: { reason },
     });
     throw new DomainError(ErrorCodes.invalidCredentials, 401, PublicMessages.invalidCredentials);
+  }
+}
+
+function mapPlatform(value: string | undefined): DevicePlatformCode {
+  switch ((value ?? '').toLowerCase()) {
+    case 'android':
+      return 'ANDROID';
+    case 'ios':
+      return 'IOS';
+    case 'tv':
+      return 'TV';
+    case 'web':
+      return 'WEB';
+    default:
+      return 'OTHER';
   }
 }

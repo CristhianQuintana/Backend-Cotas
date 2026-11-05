@@ -38,8 +38,43 @@ export interface UserRepository {
   enableMfa(id: string): Promise<void>;
 }
 
+export type DevicePlatformCode = 'WEB' | 'ANDROID' | 'IOS' | 'TV' | 'OTHER';
+
+export interface DeviceRegistrationInput {
+  userId: string;
+  /** Identificador estable que envía la app (UUID). */
+  clientDeviceId: string;
+  platform: DevicePlatformCode;
+  deviceName?: string | null;
+  /** Cupo desde XUI `max_connections`. null = sin tope de dispositivos. */
+  maxDevices: number | null;
+  now: Date;
+}
+
+export interface DeviceView {
+  id: string;
+  platform: DevicePlatformCode;
+  deviceName: string | null;
+  status: 'ACTIVE' | 'REVOKED';
+  lastSeenAt: string | null;
+  createdAt: string;
+  current: boolean;
+}
+
+/** Resumen para pantallas de configuración (`used`/`limit` → "3/5 dispositivos"). */
+export interface DeviceQuotaView {
+  used: number;
+  /** Cupo desde snapshot XUI (`maxConnections`). null = sin tope conocido. */
+  limit: number | null;
+  items: DeviceView[];
+}
+
 export interface SessionRepository {
-  create(session: SessionRecord, audit: AuditDraft): Promise<void>;
+  create(
+    session: SessionRecord,
+    audit: AuditDraft,
+    options?: { deviceId?: string | null },
+  ): Promise<void>;
   findSessionById(id: string): Promise<SessionRecord | null>;
   listActiveByUser(userId: string, now: Date): Promise<SessionRecord[]>;
   rotate(
@@ -108,7 +143,20 @@ export interface LineAccess {
     platform: string,
     now: Date,
   ): Promise<void>;
+  /**
+   * Registra o reutiliza un dispositivo. Si el cupo está lleno y es aparato nuevo → error.
+   * Si el cupo bajó, revoca los más antiguos (conserva el actual si ya existía).
+   */
+  claimDeviceSlot(input: DeviceRegistrationInput): Promise<string>;
+  listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView>;
   revokeDevice(deviceId: string, userId: string, now: Date): Promise<'revoked' | 'not_found'>;
+  /** Ajusta ACTIVE al cupo actual (p. ej. tras bajar max_connections en XUI). */
+  enforceDeviceQuota(
+    userId: string,
+    maxDevices: number | null,
+    now: Date,
+    keepDeviceId?: string | null,
+  ): Promise<number>;
 }
 
 export interface PasswordHasher {

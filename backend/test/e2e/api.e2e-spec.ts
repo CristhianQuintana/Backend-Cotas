@@ -99,7 +99,13 @@ describe('API COTAS', () => {
   async function login(username: string, extra: Record<string, string> = {}) {
     return http()
       .post('/api/v1/auth/login')
-      .send({ username, password, ...extra });
+      .send({
+        username,
+        password,
+        deviceId: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+        platform: 'android',
+        ...extra,
+      });
   }
 
   it('responde liveness sin secretos y readiness con la base simulada', async () => {

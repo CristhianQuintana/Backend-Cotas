@@ -39,6 +39,7 @@ describe('AdminUsersUseCase', () => {
       username: admin.username,
       role: admin.role,
       sessionId: '11111111-1111-4111-8111-111111111111',
+      deviceId: null,
     };
 
     const created = await useCase.create(
@@ -86,6 +87,7 @@ describe('AdminUsersUseCase', () => {
           username: admin.username,
           role: 'ADMIN',
           sessionId: '11111111-1111-4111-8111-111111111111',
+          deviceId: null,
         },
         admin.id,
         { status: 'DISABLED' },
@@ -112,6 +114,7 @@ describe('AdminUsersUseCase', () => {
           username: admin.username,
           role: 'ADMIN',
           sessionId: '11111111-1111-4111-8111-111111111111',
+          deviceId: null,
         },
         { username: 'nuevo', password: 'corto', role: 'CUSTOMER' },
         meta,

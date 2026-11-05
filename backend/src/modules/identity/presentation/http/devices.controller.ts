@@ -1,9 +1,25 @@
-import { Body, Controller, HttpCode, Inject, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Put,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsString, Length, Matches } from 'class-validator';
+import { IsIn, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
+import {
+  DomainError,
+  ErrorCodes,
+  PublicMessages,
+} from '../../../../common/exceptions/domain-error';
+import { CLOCK, type Clock } from '../../../../common/utils/clock';
 import type { AuthenticatedUser } from '../../domain/models/authenticated-user';
 import { RegisterPushTokenUseCase } from '../../application/use-cases/register-push-token.use-case';
+import { LINE_ACCESS, type LineAccess } from '../../domain/ports/identity.ports';
 
 class PushTokenDto {
   @IsString()
@@ -16,13 +32,25 @@ class PushTokenDto {
   platform!: string;
 }
 
+class DeviceIdParamDto {
+  @IsUUID('4')
+  id!: string;
+}
+
 @ApiTags('devices')
 @ApiBearerAuth()
 @Controller('devices')
 export class DevicesController {
   constructor(
     @Inject(RegisterPushTokenUseCase) private readonly registerPush: RegisterPushTokenUseCase,
+    @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+    @Inject(CLOCK) private readonly clock: Clock,
   ) {}
+
+  @Get()
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.lines.listDevices(user.id, user.deviceId);
+  }
 
   @Put('push-token')
   @HttpCode(204)
@@ -34,5 +62,17 @@ export class DevicesController {
       token: body.token,
       platform: body.platform === 'fcm' ? 'android' : body.platform,
     });
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  async revoke(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: DeviceIdParamDto,
+  ): Promise<void> {
+    const result = await this.lines.revokeDevice(params.id, user.id, this.clock.now());
+    if (result === 'not_found') {
+      throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+    }
   }
 }

@@ -12,6 +12,72 @@ Token de `POST /api/v1/auth/login` (línea XUI) o personal del panel. Sin token 
 
 Base URL de producción: `https://api.cotasperu.com/api/v1`.
 
+### Login de apps IPTV (cupo de dispositivos)
+
+Las apps de cliente **deben** enviar un `deviceId` estable (UUID v4 persistido en el aparato):
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "<linea>",
+  "password": "<clave>",
+  "deviceId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "platform": "android",
+  "deviceName": "Living TV"
+}
+```
+
+| Campo | Obligatorio | Notas |
+| --- | --- | --- |
+| `deviceId` | Sí (línea IPTV) | UUID estable por instalación; no regenerar en cada arranque |
+| `platform` | No | `android` \| `ios` \| `tv` \| `web` \| `other` |
+| `deviceName` | No | Etiqueta visible (máx. 80) |
+
+El cupo es `maxConnections` de XUI, aplicado sobre la tabla `devices` de COTAS (no sobre `active_cons` de XUI):
+
+- Aparato ya registrado → reutiliza el slot y actualiza `lastSeenAt`.
+- Cupo lleno y aparato **nuevo** → `403` / `DEVICE_LIMIT`.
+- Si el cupo **baja** (p. ej. de 10 a 5) → en el siguiente login o al consultar suscripción se revocan los más antiguos (`lastSeenAt`) y se cierran sus sesiones; se conserva el aparato actual si ya estaba registrado.
+
+Personal del panel (admin/operador con contraseña local) **no** usa cupo ni exige `deviceId`.
+
+### Listar / revocar dispositivos
+
+```http
+GET /api/v1/devices
+DELETE /api/v1/devices/{id}
+```
+
+**Respuesta 200** (pantalla de configuración → “3/5 dispositivos”):
+
+```json
+{
+  "used": 3,
+  "limit": 5,
+  "items": [
+    {
+      "id": "...",
+      "platform": "ANDROID",
+      "deviceName": "Living TV",
+      "status": "ACTIVE",
+      "lastSeenAt": "2026-11-05T14:00:00.000Z",
+      "createdAt": "2026-11-01T10:00:00.000Z",
+      "current": true
+    }
+  ]
+}
+```
+
+| Campo | Uso en UI |
+| --- | --- |
+| `used` / `limit` | Texto `used/limit` (p. ej. `3/5`). Si `limit` es `null`, mostrar solo `used` o “sin cupo” |
+| `items[].current` | Marcar “este aparato” |
+| `DELETE` | Revocar otro aparato (`204`); cierra sus sesiones |
+
+Solo aparecen dispositivos `ACTIVE`. `limit` sale del snapshot de suscripción (`maxConnections`).
+
 ## Perfil (`/auth/me`)
 
 ```http
@@ -45,7 +111,8 @@ Al responder, el backend intenta refrescar el estado en XUI (`player_api` / `use
 
 | Campo | Significado |
 | --- | --- |
-| `maxConnections` / `activeConnections` | Conexiones concurrentes de **streaming** en XUI (no dispositivos de sesión de la app) |
+| `maxConnections` | Cupo de **dispositivos de app** en COTAS (mismo valor que XUI); al bajar, se evictan los más viejos |
+| `activeConnections` | Conexiones concurrentes de **streaming** reportadas por XUI (informativo) |
 | `expiresAt` | Vencimiento de la línea (`exp_date`); `null` si XUI no informa |
 | `source` | `live` = recién consultado a XUI; `cache` = degradación |
 

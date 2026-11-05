@@ -3,6 +3,7 @@ export type RevocationReason = 'LOGOUT' | 'ROTATED' | 'REUSE' | 'ADMIN' | 'SECUR
 export interface SessionRecord {
   id: string;
   userId: string;
+  deviceId?: string | null;
   familyId: string;
   refreshTokenHash: string;
   expiresAt: Date;

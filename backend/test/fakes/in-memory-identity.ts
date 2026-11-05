@@ -10,6 +10,8 @@ import type {
   AcceptLineInput,
   AcceptLineResult,
   CreateLocalUserInput,
+  DeviceQuotaView,
+  DeviceRegistrationInput,
   LineAccess,
   LineCredentials,
   LineSnapshotInput,
@@ -23,12 +25,26 @@ import type { AuditRepository } from '../../src/modules/audit/domain/audit-repos
 import { DomainError, ErrorCodes, PublicMessages } from '../../src/common/exceptions/domain-error';
 import { newId } from '../../src/common/utils/ids';
 import { isStaffRole } from '../../src/modules/identity/domain/models/authenticated-user';
+import { createHash } from 'node:crypto';
+
+type MemoryDevice = {
+  id: string;
+  userId: string;
+  platform: DeviceRegistrationInput['platform'];
+  deviceName: string | null;
+  deviceIdentifierHash: string;
+  status: 'ACTIVE' | 'REVOKED';
+  lastSeenAt: Date | null;
+  createdAt: Date;
+  revokedAt: Date | null;
+};
 
 export class InMemoryIdentity
   implements UserRepository, SessionRepository, RecoveryCodeRepository, AuditRepository, LineAccess
 {
   readonly users: UserRecord[] = [];
   readonly sessions: SessionRecord[] = [];
+  readonly devices: MemoryDevice[] = [];
   readonly recovery = new Map<string, { userId: string; usedAt: Date | null }>();
   readonly audits: Array<AuditEventView & { metadata?: AuditDraft['metadata'] }> = [];
   readonly pushTokens = new Map<string, { token: string; platform: string }>();
@@ -181,22 +197,107 @@ export class InMemoryIdentity
     this.pushTokens.set(sessionId, { token, platform });
   }
 
+  async claimDeviceSlot(input: DeviceRegistrationInput): Promise<string> {
+    const hash = createHash('sha256').update(input.clientDeviceId.trim().toLowerCase()).digest('hex');
+    const existing = this.devices.find(
+      (device) => device.userId === input.userId && device.deviceIdentifierHash === hash,
+    );
+    if (existing) {
+      if (existing.status !== 'ACTIVE') {
+        this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
+        if (
+          input.maxDevices !== null &&
+          this.devices.filter((d) => d.userId === input.userId && d.status === 'ACTIVE').length >=
+            input.maxDevices
+        ) {
+          throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
+        }
+      }
+      existing.status = 'ACTIVE';
+      existing.revokedAt = null;
+      existing.lastSeenAt = input.now;
+      existing.platform = input.platform;
+      existing.deviceName = input.deviceName?.trim().slice(0, 80) || existing.deviceName;
+      this.enforceInMemory(input.userId, input.maxDevices, input.now, existing.id);
+      return existing.id;
+    }
+    this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
+    if (
+      input.maxDevices !== null &&
+      this.devices.filter((d) => d.userId === input.userId && d.status === 'ACTIVE').length >=
+        input.maxDevices
+    ) {
+      throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
+    }
+    const created: MemoryDevice = {
+      id: newId(),
+      userId: input.userId,
+      platform: input.platform,
+      deviceName: input.deviceName?.trim().slice(0, 80) || null,
+      deviceIdentifierHash: hash,
+      status: 'ACTIVE',
+      lastSeenAt: input.now,
+      createdAt: input.now,
+      revokedAt: null,
+    };
+    this.devices.push(created);
+    return created.id;
+  }
+
+  async listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView> {
+    const items = this.devices
+      .filter((device) => device.userId === userId && device.status === 'ACTIVE')
+      .sort(
+        (a, b) =>
+          (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0) ||
+          b.createdAt.getTime() - a.createdAt.getTime(),
+      )
+      .map((device) => ({
+        id: device.id,
+        platform: device.platform,
+        deviceName: device.deviceName,
+        status: device.status,
+        lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
+        createdAt: device.createdAt.toISOString(),
+        current: currentDeviceId !== null && device.id === currentDeviceId,
+      }));
+    const snapshot = this.snapshots.get(userId);
+    return {
+      used: items.length,
+      limit: snapshot?.maxConnections ?? null,
+      items,
+    };
+  }
+
   async revokeDevice(
     deviceId: string,
     userId: string,
     now: Date,
   ): Promise<'revoked' | 'not_found'> {
-    const owned = this.sessions.filter(
-      (session) => session.userId === userId && session.id === deviceId,
+    const device = this.devices.find(
+      (item) => item.id === deviceId && item.userId === userId && item.status === 'ACTIVE',
     );
-    if (owned.length === 0) {
+    if (!device) {
       return 'not_found';
     }
-    for (const session of owned) {
-      session.revokedAt = now;
-      session.revocationReason = 'SECURITY';
+    device.status = 'REVOKED';
+    device.revokedAt = now;
+    for (const session of this.sessions) {
+      if (session.deviceId === deviceId && session.userId === userId && !session.revokedAt) {
+        session.revokedAt = now;
+        session.revocationReason = 'SECURITY';
+      }
     }
     return 'revoked';
+  }
+
+  async enforceDeviceQuota(
+    userId: string,
+    maxDevices: number | null,
+    now: Date,
+    keepDeviceId?: string | null,
+  ): Promise<number> {
+    return this.enforceInMemory(userId, maxDevices, now, keepDeviceId ?? null);
   }
 
   async enableMfa(id: string): Promise<void> {
@@ -207,8 +308,12 @@ export class InMemoryIdentity
     user.mfaEnabled = true;
   }
 
-  async create(session: SessionRecord, audit: AuditDraft): Promise<void> {
-    this.sessions.push({ ...session });
+  async create(
+    session: SessionRecord,
+    audit: AuditDraft,
+    options?: { deviceId?: string | null },
+  ): Promise<void> {
+    this.sessions.push({ ...session, deviceId: options?.deviceId ?? session.deviceId ?? null });
     this.pushAudit(audit, session.userId);
   }
 
@@ -251,7 +356,12 @@ export class InMemoryIdentity
     current.revokedAt = now;
     current.revocationReason = 'ROTATED';
     current.replacedById = next.id;
-    this.sessions.push({ ...next, userId: current.userId, familyId: current.familyId });
+    this.sessions.push({
+      ...next,
+      userId: current.userId,
+      familyId: current.familyId,
+      deviceId: current.deviceId ?? null,
+    });
     this.pushAudit(successAudit, current.userId);
     return { type: 'rotated', userId: current.userId, sessionId: next.id };
   }
@@ -322,6 +432,53 @@ export class InMemoryIdentity
         session.revocationReason = 'REUSE';
       }
     }
+  }
+
+  private enforceInMemory(
+    userId: string,
+    maxDevices: number | null,
+    now: Date,
+    keepDeviceId: string | null,
+  ): number {
+    if (maxDevices === null || maxDevices < 1) {
+      return 0;
+    }
+    const active = this.devices
+      .filter((device) => device.userId === userId && device.status === 'ACTIVE')
+      .sort(
+        (a, b) =>
+          (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0) ||
+          b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+    if (active.length <= maxDevices) {
+      return 0;
+    }
+    const keep = new Set<string>();
+    if (keepDeviceId) {
+      keep.add(keepDeviceId);
+    }
+    for (const row of active) {
+      if (keep.size >= maxDevices) {
+        break;
+      }
+      keep.add(row.id);
+    }
+    let revoked = 0;
+    for (const row of active) {
+      if (keep.has(row.id)) {
+        continue;
+      }
+      row.status = 'REVOKED';
+      row.revokedAt = now;
+      for (const session of this.sessions) {
+        if (session.deviceId === row.id && session.userId === userId && !session.revokedAt) {
+          session.revokedAt = now;
+          session.revocationReason = 'SECURITY';
+        }
+      }
+      revoked += 1;
+    }
+    return revoked;
   }
 
   private pushAudit(draft: AuditDraft, actorUserId: string | null): void {

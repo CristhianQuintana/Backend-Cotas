@@ -42,17 +42,23 @@ API_BASE_URL = https://api.cotasperu.com/api/v1
 POST /auth/login
 Content-Type: application/json
 
-{ "username": "<linea>", "password": "<clave>" }
+{
+  "username": "<linea>",
+  "password": "<clave>",
+  "deviceId": "<uuid-estable-del-aparato>",
+  "platform": "android"
+}
 ```
 
-Respuesta típica: `accessToken`, `refreshToken`, `expiresIn`, `tokenType`.
+Respuesta típica: `accessToken`, `refreshToken`, `expiresIn`, `tokenType`.  
+`deviceId` es obligatorio en apps IPTV (UUID persistido). Cupo = `maxConnections`; detalle en `docs/integraciones/cuenta-y-notificaciones.md`.
 
 ```http
 Authorization: Bearer <accessToken>
 ```
 
-También: `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`.  
-Ante `401`: renovar o re-login. No loguear tokens ni contraseñas.
+También: `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `GET /devices` (`used`/`limit`/`items` para “x/y dispositivos”), `DELETE /devices/{id}`.  
+Ante `401`: renovar o re-login. Ante `403` `DEVICE_LIMIT`: pedir al usuario que revoque un aparato. No loguear tokens ni contraseñas.
 
 ---
 

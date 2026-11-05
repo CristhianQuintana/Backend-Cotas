@@ -66,6 +66,7 @@ export class AccessTokenGuard implements CanActivate {
       username: user.username,
       role: user.role,
       sessionId: session.id,
+      deviceId: session.deviceId ?? null,
     };
     return true;
   }

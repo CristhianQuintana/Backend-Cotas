@@ -25,6 +25,8 @@ import {
   type AcceptLineInput,
   type AcceptLineResult,
   type CreateLocalUserInput,
+  type DeviceQuotaView,
+  type DeviceRegistrationInput,
   type LineAccess,
   type LineCredentials,
   type LineSnapshotInput,
@@ -295,15 +297,126 @@ export class PrismaIdentityStore
     }
   }
 
-  async create(session: SessionRecord, audit: AuditDraft): Promise<void> {
+  async claimDeviceSlot(input: DeviceRegistrationInput): Promise<string> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const hash = hashClientDeviceId(input.clientDeviceId);
+        const existing = await tx.device.findFirst({
+          where: { userId: input.userId, deviceIdentifierHash: hash },
+        });
+        if (existing) {
+          if (existing.status !== 'ACTIVE') {
+            await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, null);
+            if (input.maxDevices !== null) {
+              const active = await tx.device.count({
+                where: { userId: input.userId, status: 'ACTIVE' },
+              });
+              if (active >= input.maxDevices) {
+                throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
+              }
+            }
+          }
+          await tx.device.update({
+            where: { id: existing.id },
+            data: {
+              status: 'ACTIVE',
+              revokedAt: null,
+              lastSeenAt: input.now,
+              platform: input.platform,
+              deviceName: input.deviceName?.trim().slice(0, 80) || existing.deviceName,
+            },
+          });
+          await enforceDeviceQuotaInTx(
+            tx,
+            input.userId,
+            input.maxDevices,
+            input.now,
+            existing.id,
+          );
+          return existing.id;
+        }
+
+        await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, null);
+        if (input.maxDevices !== null) {
+          const active = await tx.device.count({
+            where: { userId: input.userId, status: 'ACTIVE' },
+          });
+          if (active >= input.maxDevices) {
+            throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
+          }
+        }
+
+        const created = await tx.device.create({
+          data: {
+            id: newId(),
+            userId: input.userId,
+            platform: input.platform,
+            deviceName: input.deviceName?.trim().slice(0, 80) || null,
+            deviceIdentifierHash: hash,
+            status: 'ACTIVE',
+            lastSeenAt: input.now,
+          },
+        });
+        return created.id;
+      });
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView> {
+    try {
+      const [rows, snapshot] = await Promise.all([
+        this.prisma.device.findMany({
+          where: { userId, status: 'ACTIVE' },
+          orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }],
+        }),
+        this.getSubscriptionSnapshot(userId),
+      ]);
+      const items = rows.map((row) => ({
+        id: row.id,
+        platform: row.platform,
+        deviceName: row.deviceName,
+        status: row.status as 'ACTIVE' | 'REVOKED',
+        lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
+        createdAt: row.createdAt.toISOString(),
+        current: currentDeviceId !== null && row.id === currentDeviceId,
+      }));
+      return {
+        used: items.length,
+        limit: snapshot?.maxConnections ?? null,
+        items,
+      };
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async enforceDeviceQuota(
+    userId: string,
+    maxDevices: number | null,
+    now: Date,
+    keepDeviceId?: string | null,
+  ): Promise<number> {
+    try {
+      return await this.prisma.$transaction(async (tx) =>
+        enforceDeviceQuotaInTx(tx, userId, maxDevices, now, keepDeviceId ?? null),
+      );
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async create(
+    session: SessionRecord,
+    audit: AuditDraft,
+    options?: { deviceId?: string | null },
+  ): Promise<void> {
     try {
       await this.prisma.$transaction(async (tx) => {
-        const deviceId = await touchDevice(
-          tx,
-          session.userId,
-          session.userAgent,
-          session.createdAt,
-        );
+        const deviceId =
+          options?.deviceId ??
+          (await touchDevice(tx, session.userId, session.userAgent, session.createdAt));
         await tx.userSession.create({
           data: toSessionData(session, { deviceId, ipAddress: audit.ipAddress }),
         });
@@ -695,6 +808,7 @@ function isStatus(value: string): value is UserStatus {
 function toSession(session: {
   id: string;
   userId: string;
+  deviceId: string | null;
   familyId: string;
   refreshTokenHash: string;
   expiresAt: Date;
@@ -707,6 +821,7 @@ function toSession(session: {
   return {
     id: session.id,
     userId: session.userId,
+    deviceId: session.deviceId,
     familyId: session.familyId,
     refreshTokenHash: session.refreshTokenHash,
     expiresAt: session.expiresAt,
@@ -737,6 +852,51 @@ function toSessionData(
     revokeReason: session.revocationReason,
     replacedById: session.replacedById,
   };
+}
+
+function hashClientDeviceId(clientDeviceId: string): string {
+  return createHash('sha256').update(clientDeviceId.trim().toLowerCase()).digest('hex');
+}
+
+async function enforceDeviceQuotaInTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  maxDevices: number | null,
+  now: Date,
+  keepDeviceId: string | null,
+): Promise<number> {
+  if (maxDevices === null || maxDevices < 1) {
+    return 0;
+  }
+  const active = await tx.device.findMany({
+    where: { userId, status: 'ACTIVE' },
+    orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }],
+  });
+  if (active.length <= maxDevices) {
+    return 0;
+  }
+  const keep = new Set<string>();
+  if (keepDeviceId) {
+    keep.add(keepDeviceId);
+  }
+  for (const row of active) {
+    if (keep.size >= maxDevices) {
+      break;
+    }
+    keep.add(row.id);
+  }
+  const toRevoke = active.filter((row) => !keep.has(row.id));
+  for (const row of toRevoke) {
+    await tx.device.update({
+      where: { id: row.id },
+      data: { status: 'REVOKED', revokedAt: now },
+    });
+    await tx.userSession.updateMany({
+      where: { deviceId: row.id, userId, revokedAt: null },
+      data: { revokedAt: now, revokeReason: 'SECURITY' },
+    });
+  }
+  return toRevoke.length;
 }
 
 async function touchDevice(

@@ -37,6 +37,12 @@ export class GetSubscriptionUseCase {
           status: line.status,
         };
         await this.lines.saveLineSnapshot(user.id, snapshot, now);
+        await this.lines.enforceDeviceQuota(
+          user.id,
+          line.maxConnections,
+          now,
+          user.deviceId,
+        );
         return {
           ...snapshot,
           username: line.username ?? credentials.username,

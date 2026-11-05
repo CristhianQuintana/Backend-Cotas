@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { DomainError, PublicMessages } from '../../../../common/exceptions/domain-error';
 import type { Clock } from '../../../../common/utils/clock';
 import type { AppConfig } from '../../../../config/app-config';
@@ -12,6 +13,10 @@ const meta = {
   ipAddress: '127.0.0.1',
   userAgent: 'jest',
 };
+
+const deviceA = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+const deviceB = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+const deviceC = '550e8400-e29b-41d4-a716-446655440000';
 
 describe('identidad', () => {
   const clock: Clock = { now: () => new Date('2026-10-19T15:00:00.000Z') };
@@ -89,27 +94,152 @@ describe('identidad', () => {
     const result = await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
+      deviceId: deviceA,
+      platform: 'android',
       meta,
     });
     expect(result.type).toBe('authenticated');
 
     await expect(
-      login.execute({ username: 'missing.demo', password: 'correct-horse-battery', meta }),
+      login.execute({
+        username: 'missing.demo',
+        password: 'correct-horse-battery',
+        deviceId: deviceA,
+        meta,
+      }),
     ).rejects.toThrow(PublicMessages.invalidCredentials);
     await expect(
-      login.execute({ username: 'viewer.demo', password: 'wrong-password-1', meta }),
+      login.execute({
+        username: 'viewer.demo',
+        password: 'wrong-password-1',
+        deviceId: deviceA,
+        meta,
+      }),
     ).rejects.toThrow(PublicMessages.invalidCredentials);
     await expect(
-      login.execute({ username: 'disabled.demo', password: 'correct-horse-battery', meta }),
+      login.execute({
+        username: 'disabled.demo',
+        password: 'correct-horse-battery',
+        deviceId: deviceA,
+        meta,
+      }),
     ).rejects.toThrow(PublicMessages.invalidCredentials);
 
     const created = await login.execute({
       username: 'linea.nueva',
       password: 'correct-horse-battery',
+      deviceId: deviceB,
+      platform: 'tv',
       meta,
     });
     expect(created.type).toBe('authenticated');
     expect(identity.users.find((user) => user.username === 'linea.nueva')?.role).toBe('CUSTOMER');
+  });
+
+  it('exige deviceId en login de línea IPTV y respeta el cupo maxConnections', async () => {
+    const { identity, login, xui } = setup();
+    xui.line.maxConnections = 2;
+    xui.lines.set('viewer.demo', 'correct-horse-battery');
+    addUser(identity, {
+      username: 'viewer.demo',
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      mfaEnabled: false,
+      mfaSecretCiphertext: null,
+    });
+
+    await expect(
+      login.execute({ username: 'viewer.demo', password: 'correct-horse-battery', meta }),
+    ).rejects.toBeInstanceOf(DomainError);
+
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceA,
+      platform: 'android',
+      meta,
+    });
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceB,
+      platform: 'tv',
+      meta,
+    });
+    await expect(
+      login.execute({
+        username: 'viewer.demo',
+        password: 'correct-horse-battery',
+        deviceId: deviceC,
+        platform: 'ios',
+        meta,
+      }),
+    ).rejects.toThrow(PublicMessages.deviceLimit);
+
+    // Re-login del mismo aparato no consume un slot extra.
+    const again = await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceA,
+      platform: 'android',
+      meta,
+    });
+    expect(again.type).toBe('authenticated');
+    expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(2);
+  });
+
+  it('si baja maxConnections, al re-login cierra los dispositivos más viejos y conserva el actual', async () => {
+    const { identity, login, xui } = setup();
+    xui.line.maxConnections = 3;
+    xui.lines.set('viewer.demo', 'correct-horse-battery');
+    addUser(identity, {
+      username: 'viewer.demo',
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      mfaEnabled: false,
+      mfaSecretCiphertext: null,
+    });
+
+    const t0 = new Date('2026-10-19T12:00:00.000Z');
+    const t1 = new Date('2026-10-19T13:00:00.000Z');
+    const t2 = new Date('2026-10-19T14:00:00.000Z');
+    clock.now = () => t0;
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceA,
+      meta,
+    });
+    clock.now = () => t1;
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceB,
+      meta,
+    });
+    clock.now = () => t2;
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceC,
+      meta,
+    });
+    expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(3);
+
+    xui.line.maxConnections = 1;
+    clock.now = () => new Date('2026-10-19T15:00:00.000Z');
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceA,
+      meta,
+    });
+
+    const active = identity.devices.filter((d) => d.status === 'ACTIVE');
+    expect(active).toHaveLength(1);
+    expect(active[0]?.deviceIdentifierHash).toBe(
+      createHash('sha256').update(deviceA).digest('hex'),
+    );
   });
 
   it('autentica personal con contraseña local Argon2 sin MFA', async () => {
@@ -158,6 +288,7 @@ describe('identidad', () => {
     const session = await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
+      deviceId: deviceA,
       meta,
     });
     if (session.type !== 'authenticated') {

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
 
 export class LoginRequestDto {
   @ApiProperty({ example: 'viewer.demo', minLength: 3, maxLength: 64 })
@@ -12,6 +12,27 @@ export class LoginRequestDto {
   @IsString()
   @Length(1, 128)
   password!: string;
+
+  @ApiPropertyOptional({
+    description: 'UUID estable del aparato (obligatorio en apps de cliente IPTV).',
+    example: '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu)
+  deviceId?: string;
+
+  @ApiPropertyOptional({ enum: ['android', 'ios', 'tv', 'web', 'other'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['android', 'ios', 'tv', 'web', 'other'])
+  platform?: string;
+
+  @ApiPropertyOptional({ example: 'Samsung TV sala' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  deviceName?: string;
 
   @ApiPropertyOptional({ example: '123456' })
   @IsOptional()

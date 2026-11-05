@@ -27,6 +27,7 @@ export const ErrorCodes = {
   playbackRejected: 'PLAYBACK_REFERENCE_REJECTED',
   internal: 'INTERNAL_ERROR',
   mfaAlreadyEnabled: 'MFA_ALREADY_ENABLED',
+  deviceLimit: 'DEVICE_LIMIT',
 } as const;
 
 export const PublicMessages = {
@@ -50,4 +51,6 @@ export const PublicMessages = {
   internal: 'No se pudo completar la operación.',
   mfaAlreadyEnabled: 'La verificación en dos pasos ya está activa.',
   databaseUnavailable: 'La base de datos no está disponible.',
+  deviceLimit:
+    'Se alcanzó el límite de dispositivos para esta cuenta. Revoca uno para continuar.',
 } as const;
