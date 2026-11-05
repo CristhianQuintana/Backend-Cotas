@@ -31,7 +31,9 @@ import { AdminUsersController } from './modules/identity/presentation/http/admin
 import { AccountController } from './modules/identity/presentation/http/account.controller';
 import { AccountRemindersController } from './modules/identity/presentation/http/account-reminders.controller';
 import { DevicesController } from './modules/identity/presentation/http/devices.controller';
+import { DeviceLinkController } from './modules/identity/presentation/http/device-link.controller';
 import { LoginUseCase } from './modules/identity/application/use-cases/login.use-case';
+import { DeviceLinkUseCase } from './modules/identity/application/use-cases/device-link.use-case';
 import { RefreshSessionUseCase } from './modules/identity/application/use-cases/refresh-session.use-case';
 import { AdminUsersUseCase } from './modules/identity/application/use-cases/admin-users.use-case';
 import { GetSubscriptionUseCase } from './modules/identity/application/use-cases/subscription.use-case';
@@ -55,6 +57,7 @@ import {
   TotpMfaService,
 } from './modules/identity/infrastructure/mfa/totp.service';
 import {
+  DEVICE_LINK_REPOSITORY,
   LINE_ACCESS,
   MFA_CIPHER,
   MFA_SERVICE,
@@ -87,6 +90,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     AccountController,
     AccountRemindersController,
     DevicesController,
+    DeviceLinkController,
     AdminUsersController,
     CatalogController,
     PlaybackController,
@@ -100,6 +104,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     { provide: SESSION_REPOSITORY, useExisting: PrismaIdentityStore },
     { provide: RECOVERY_CODE_REPOSITORY, useExisting: PrismaIdentityStore },
     { provide: LINE_ACCESS, useExisting: PrismaIdentityStore },
+    { provide: DEVICE_LINK_REPOSITORY, useExisting: PrismaIdentityStore },
     PrismaAuditRepository,
     { provide: AUDIT_REPOSITORY, useExisting: PrismaAuditRepository },
     Argon2PasswordHasher,
@@ -125,6 +130,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
         }),
     },
     LoginUseCase,
+    DeviceLinkUseCase,
     RefreshSessionUseCase,
     LogoutUseCase,
     GetProfileUseCase,

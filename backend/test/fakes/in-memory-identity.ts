@@ -9,7 +9,11 @@ import type {
 import type {
   AcceptLineInput,
   AcceptLineResult,
+  ApproveDeviceLinkChallengeInput,
+  CreateDeviceLinkChallengeInput,
   CreateLocalUserInput,
+  DeviceLinkChallengeRecord,
+  DeviceLinkRepository,
   DeviceQuotaView,
   DeviceRegistrationInput,
   LineAccess,
@@ -40,11 +44,18 @@ type MemoryDevice = {
 };
 
 export class InMemoryIdentity
-  implements UserRepository, SessionRepository, RecoveryCodeRepository, AuditRepository, LineAccess
+  implements
+    UserRepository,
+    SessionRepository,
+    RecoveryCodeRepository,
+    AuditRepository,
+    LineAccess,
+    DeviceLinkRepository
 {
   readonly users: UserRecord[] = [];
   readonly sessions: SessionRecord[] = [];
   readonly devices: MemoryDevice[] = [];
+  readonly linkChallenges: DeviceLinkChallengeRecord[] = [];
   readonly recovery = new Map<string, { userId: string; usedAt: Date | null }>();
   readonly audits: Array<AuditEventView & { metadata?: AuditDraft['metadata'] }> = [];
   readonly pushTokens = new Map<string, { token: string; platform: string }>();
@@ -207,7 +218,18 @@ export class InMemoryIdentity
     this.revokeOrphansInMemory(input.userId, input.now, existing?.id ?? null);
     if (existing) {
       if (existing.status !== 'ACTIVE' && input.maxDevices !== null && input.maxDevices >= 1) {
-        this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
+        const active = this.devices.filter(
+          (d) => d.userId === input.userId && d.status === 'ACTIVE',
+        ).length;
+        if (active >= input.maxDevices) {
+          if (input.onLimit === 'reject') {
+            throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+              { field: 'used', rules: [String(active)] },
+              { field: 'limit', rules: [String(input.maxDevices)] },
+            ]);
+          }
+          this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
+        }
       }
       existing.status = 'ACTIVE';
       existing.revokedAt = null;
@@ -218,7 +240,18 @@ export class InMemoryIdentity
       return existing.id;
     }
     if (input.maxDevices !== null && input.maxDevices >= 1) {
-      this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
+      const active = this.devices.filter(
+        (d) => d.userId === input.userId && d.status === 'ACTIVE',
+      ).length;
+      if (active >= input.maxDevices) {
+        if (input.onLimit === 'reject') {
+          throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+            { field: 'used', rules: [String(active)] },
+            { field: 'limit', rules: [String(input.maxDevices)] },
+          ]);
+        }
+        this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
+      }
     }
     const created: MemoryDevice = {
       id: newId(),
@@ -290,6 +323,73 @@ export class InMemoryIdentity
     keepDeviceId?: string | null,
   ): Promise<number> {
     return this.enforceInMemory(userId, maxDevices, now, keepDeviceId ?? null);
+  }
+
+  async createChallenge(input: CreateDeviceLinkChallengeInput): Promise<DeviceLinkChallengeRecord> {
+    const row: DeviceLinkChallengeRecord = {
+      id: newId(),
+      codeHash: input.codeHash,
+      tvClientDeviceId: input.tvClientDeviceId,
+      tvClientDeviceIdHash: input.tvClientDeviceIdHash,
+      platform: input.platform,
+      deviceName: input.deviceName?.trim().slice(0, 80) || null,
+      status: 'PENDING',
+      expiresAt: input.expiresAt,
+      approvedAt: null,
+      consumedAt: null,
+      approverUserId: null,
+      deviceId: null,
+      createdAt: input.now,
+    };
+    this.linkChallenges.push(row);
+    return row;
+  }
+
+  async findByCodeHash(codeHash: string): Promise<DeviceLinkChallengeRecord | null> {
+    return this.linkChallenges.find((row) => row.codeHash === codeHash) ?? null;
+  }
+
+  async markApproved(input: ApproveDeviceLinkChallengeInput): Promise<DeviceLinkChallengeRecord> {
+    const row = this.linkChallenges.find(
+      (item) => item.codeHash === input.codeHash && item.status === 'PENDING',
+    );
+    if (!row) {
+      throw new DomainError(ErrorCodes.deviceLinkInvalid, 409, PublicMessages.deviceLinkInvalid);
+    }
+    row.status = 'APPROVED';
+    row.approvedAt = input.now;
+    row.approverUserId = input.approverUserId;
+    row.deviceId = input.deviceId;
+    if (input.deviceName?.trim()) {
+      row.deviceName = input.deviceName.trim().slice(0, 80);
+    }
+    return row;
+  }
+
+  async markConsumed(id: string, now: Date): Promise<DeviceLinkChallengeRecord | null> {
+    const row = this.linkChallenges.find((item) => item.id === id && item.status === 'APPROVED');
+    if (!row) {
+      return null;
+    }
+    row.status = 'CONSUMED';
+    row.consumedAt = now;
+    return row;
+  }
+
+  async markExpiredIfNeeded(id: string, now: Date): Promise<DeviceLinkChallengeRecord | null> {
+    const row = this.linkChallenges.find((item) => item.id === id);
+    if (!row) {
+      return null;
+    }
+    if (row.status === 'PENDING' && row.expiresAt <= now) {
+      row.status = 'EXPIRED';
+    }
+    return row;
+  }
+
+  /** Prueba: fija snapshot de cupo para el usuario. */
+  setSubscriptionSnapshot(userId: string, snapshot: SubscriptionSnapshot): void {
+    this.snapshots.set(userId, snapshot);
   }
 
   async enableMfa(id: string): Promise<void> {
@@ -455,6 +555,7 @@ export class InMemoryIdentity
   }
 
   private revokeOrphansInMemory(userId: string, now: Date, keepDeviceId: string | null): void {
+    const graceMs = 3 * 60 * 1000;
     for (const device of this.devices) {
       if (device.userId !== userId || device.status !== 'ACTIVE') {
         continue;
@@ -469,10 +570,14 @@ export class InMemoryIdentity
           !session.revokedAt &&
           session.expiresAt > now,
       );
-      if (!live) {
-        device.status = 'REVOKED';
-        device.revokedAt = now;
+      if (live) {
+        continue;
       }
+      if (device.lastSeenAt && now.getTime() - device.lastSeenAt.getTime() < graceMs) {
+        continue;
+      }
+      device.status = 'REVOKED';
+      device.revokedAt = now;
     }
   }
 

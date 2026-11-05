@@ -58,12 +58,26 @@ Personal del panel (admin/operador con contraseña local) **no** usa cupo ni exi
 
 Si el cupo está lleno y entra un **nuevo** `deviceId`, el backend **desplaza** el aparato con `lastSeenAt` más antiguo (cierra sus sesiones) para no dejar la cuenta bloqueada por logins abandonados.
 
+### Login TV por QR (device link)
+
+El TV crea un código de un solo uso; el móvil (Bearer) lo aprueba; el TV hace poll y recibe **tokens propios**.
+
+| Actor | Método |
+| --- | --- |
+| TV | `POST /auth/device-link/session` → `linkCode`, `qrPayload`, `expiresIn`, `pollIntervalMs` |
+| TV | `GET /auth/device-link/session/{code}?deviceId=` → `pending` \| `approved`+tokens \| `expired` \| `consumed` |
+| Móvil | `POST /auth/device-link/approve` `{ linkCode, deviceName? }` → registra en `devices` (cupo con `DEVICE_LIMIT` si está lleno) |
+
+QR payload: `cotas://device-link?code=XXXXXXXX` (sin credenciales).  
+Informes: `informe-login-qr-tv.md` y `informe-login-qr-movil.md`.
+
 ### Listar / revocar dispositivos
 
 ```http
 GET /api/v1/devices
 DELETE /api/v1/devices/{id}
 ```
+
 
 **Respuesta 200** (pantalla de configuración → “3/5 dispositivos”):
 

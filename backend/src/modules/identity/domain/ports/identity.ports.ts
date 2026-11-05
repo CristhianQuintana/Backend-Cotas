@@ -49,6 +49,63 @@ export interface DeviceRegistrationInput {
   /** Cupo desde XUI `max_connections`. null = sin tope de dispositivos. */
   maxDevices: number | null;
   now: Date;
+  /**
+   * Cupo lleno + aparato nuevo:
+   * - `displace` (default, login clave): cierra el menos reciente.
+   * - `reject` (QR approve): 403 DEVICE_LIMIT para que el móvil elija qué revocar.
+   */
+  onLimit?: 'displace' | 'reject';
+}
+
+export type DeviceLinkStatusCode =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'EXPIRED'
+  | 'DENIED'
+  | 'CONSUMED';
+
+export interface DeviceLinkChallengeRecord {
+  id: string;
+  codeHash: string;
+  tvClientDeviceId: string;
+  tvClientDeviceIdHash: string;
+  platform: DevicePlatformCode;
+  deviceName: string | null;
+  status: DeviceLinkStatusCode;
+  expiresAt: Date;
+  approvedAt: Date | null;
+  consumedAt: Date | null;
+  approverUserId: string | null;
+  deviceId: string | null;
+  createdAt: Date;
+}
+
+export interface CreateDeviceLinkChallengeInput {
+  codeHash: string;
+  tvClientDeviceId: string;
+  tvClientDeviceIdHash: string;
+  platform: DevicePlatformCode;
+  deviceName?: string | null;
+  expiresAt: Date;
+  now: Date;
+}
+
+export interface ApproveDeviceLinkChallengeInput {
+  codeHash: string;
+  approverUserId: string;
+  deviceId: string;
+  deviceName?: string | null;
+  now: Date;
+}
+
+export const DEVICE_LINK_REPOSITORY = Symbol('DEVICE_LINK_REPOSITORY');
+
+export interface DeviceLinkRepository {
+  createChallenge(input: CreateDeviceLinkChallengeInput): Promise<DeviceLinkChallengeRecord>;
+  findByCodeHash(codeHash: string): Promise<DeviceLinkChallengeRecord | null>;
+  markApproved(input: ApproveDeviceLinkChallengeInput): Promise<DeviceLinkChallengeRecord>;
+  markConsumed(id: string, now: Date): Promise<DeviceLinkChallengeRecord | null>;
+  markExpiredIfNeeded(id: string, now: Date): Promise<DeviceLinkChallengeRecord | null>;
 }
 
 export interface DeviceView {

@@ -62,6 +62,14 @@ enum AuthChallengePurpose {
   MFA_RECOVERY
 }
 
+enum DeviceLinkStatus {
+  PENDING
+  APPROVED
+  EXPIRED
+  DENIED
+  CONSUMED
+}
+
 model User {
   id              String     @id @db.Uuid
   email           String?    @db.VarChar(254)
@@ -83,9 +91,10 @@ model User {
   devices        Device[]
   mfaMethods     UserMfaMethod[]
   iptvAccounts   IptvAccount[]
-  reminders      AccountReminder[]
-  auditLogs      AuditLog[]
-  authChallenges AuthChallenge[]
+  reminders           AccountReminder[]
+  auditLogs           AuditLog[]
+  authChallenges      AuthChallenge[]
+  deviceLinkApprovals DeviceLinkChallenge[] @relation("DeviceLinkApprover")
 
   @@index([status])
   @@index([deletedAt])
@@ -314,4 +323,31 @@ model AuthChallenge {
 
   @@index([userId, purpose])
   @@map("auth_challenges")
+}
+
+/// Código de un solo uso para login TV vía QR (móvil aprueba → TV canjea tokens propios).
+model DeviceLinkChallenge {
+  id                     String           @id @db.Uuid
+  codeHash               String           @unique @map("code_hash") @db.VarChar(64)
+  /// Identificador estable del TV (UUID de instalación). No es secreto; el secreto es el código.
+  tvClientDeviceId       String           @map("tv_client_device_id") @db.VarChar(128)
+  /// Hash del id (lookup / integridad con claimDeviceSlot).
+  tvClientDeviceIdHash   String           @map("tv_client_device_id_hash") @db.VarChar(64)
+  platform               DevicePlatform
+  deviceName             String?          @map("device_name") @db.VarChar(80)
+  status                 DeviceLinkStatus @default(PENDING)
+  expiresAt              DateTime         @map("expires_at") @db.Timestamptz(3)
+  approvedAt             DateTime?        @map("approved_at") @db.Timestamptz(3)
+  consumedAt             DateTime?        @map("consumed_at") @db.Timestamptz(3)
+  /// Usuario que aprobó desde el móvil.
+  approverUserId         String?          @map("approver_user_id") @db.Uuid
+  /// Fila devices creada/reclamada al aprobar.
+  deviceId               String?          @map("device_id") @db.Uuid
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  approver User? @relation("DeviceLinkApprover", fields: [approverUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt])
+  @@index([tvClientDeviceIdHash, status])
+  @@map("device_link_challenges")
 }

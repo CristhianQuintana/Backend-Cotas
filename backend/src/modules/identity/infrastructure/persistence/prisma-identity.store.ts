@@ -24,7 +24,12 @@ import {
   MFA_CIPHER,
   type AcceptLineInput,
   type AcceptLineResult,
+  type ApproveDeviceLinkChallengeInput,
+  type CreateDeviceLinkChallengeInput,
   type CreateLocalUserInput,
+  type DeviceLinkChallengeRecord,
+  type DeviceLinkRepository,
+  type DeviceLinkStatusCode,
   type DeviceQuotaView,
   type DeviceRegistrationInput,
   type LineAccess,
@@ -49,7 +54,12 @@ const RECOVERY_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class PrismaIdentityStore
-  implements UserRepository, SessionRepository, RecoveryCodeRepository, LineAccess
+  implements
+    UserRepository,
+    SessionRepository,
+    RecoveryCodeRepository,
+    LineAccess,
+    DeviceLinkRepository
 {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -308,14 +318,24 @@ export class PrismaIdentityStore
         await revokeOrphanDevicesInTx(tx, input.userId, input.now, existing?.id ?? null);
         if (existing) {
           if (existing.status !== 'ACTIVE' && input.maxDevices !== null && input.maxDevices >= 1) {
-            // Reactivar aparato previo: deja hueco si el cupo está lleno.
-            await enforceDeviceQuotaInTx(
-              tx,
-              input.userId,
-              Math.max(input.maxDevices - 1, 0),
-              input.now,
-              null,
-            );
+            const active = await tx.device.count({
+              where: { userId: input.userId, status: 'ACTIVE' },
+            });
+            if (active >= input.maxDevices) {
+              if (input.onLimit === 'reject') {
+                throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+                  { field: 'used', rules: [String(active)] },
+                  { field: 'limit', rules: [String(input.maxDevices)] },
+                ]);
+              }
+              await enforceDeviceQuotaInTx(
+                tx,
+                input.userId,
+                Math.max(input.maxDevices - 1, 0),
+                input.now,
+                null,
+              );
+            }
           }
           await tx.device.update({
             where: { id: existing.id },
@@ -331,16 +351,26 @@ export class PrismaIdentityStore
           return existing.id;
         }
 
-        // Cupo lleno + aparato nuevo → desplaza el menos reciente (libera 1 slot).
-        // Así TV/móvil no quedan bloqueados por sesiones abandonadas sin logout.
         if (input.maxDevices !== null && input.maxDevices >= 1) {
-          await enforceDeviceQuotaInTx(
-            tx,
-            input.userId,
-            Math.max(input.maxDevices - 1, 0),
-            input.now,
-            null,
-          );
+          const active = await tx.device.count({
+            where: { userId: input.userId, status: 'ACTIVE' },
+          });
+          if (active >= input.maxDevices) {
+            if (input.onLimit === 'reject') {
+              throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+                { field: 'used', rules: [String(active)] },
+                { field: 'limit', rules: [String(input.maxDevices)] },
+              ]);
+            }
+            // Login clave: desplaza el menos reciente.
+            await enforceDeviceQuotaInTx(
+              tx,
+              input.userId,
+              Math.max(input.maxDevices - 1, 0),
+              input.now,
+              null,
+            );
+          }
         }
 
         const created = await tx.device.create({
@@ -763,6 +793,124 @@ export class PrismaIdentityStore
       return { ok: true, user: toUser(fresh) };
     });
   }
+
+  async createChallenge(input: CreateDeviceLinkChallengeInput): Promise<DeviceLinkChallengeRecord> {
+    try {
+      const row = await this.prisma.deviceLinkChallenge.create({
+        data: {
+          id: newId(),
+          codeHash: input.codeHash,
+          tvClientDeviceId: input.tvClientDeviceId.trim().slice(0, 128),
+          tvClientDeviceIdHash: input.tvClientDeviceIdHash,
+          platform: input.platform,
+          deviceName: input.deviceName?.trim().slice(0, 80) || null,
+          status: 'PENDING',
+          expiresAt: input.expiresAt,
+          createdAt: input.now,
+        },
+      });
+      return toDeviceLink(row);
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async findByCodeHash(codeHash: string): Promise<DeviceLinkChallengeRecord | null> {
+    try {
+      const row = await this.prisma.deviceLinkChallenge.findUnique({ where: { codeHash } });
+      return row ? toDeviceLink(row) : null;
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async markApproved(input: ApproveDeviceLinkChallengeInput): Promise<DeviceLinkChallengeRecord> {
+    try {
+      const updated = await this.prisma.deviceLinkChallenge.updateMany({
+        where: { codeHash: input.codeHash, status: 'PENDING' },
+        data: {
+          status: 'APPROVED',
+          approvedAt: input.now,
+          approverUserId: input.approverUserId,
+          deviceId: input.deviceId,
+          deviceName: input.deviceName?.trim().slice(0, 80) || undefined,
+        },
+      });
+      if (updated.count !== 1) {
+        throw new DomainError(ErrorCodes.deviceLinkInvalid, 409, PublicMessages.deviceLinkInvalid);
+      }
+      const row = await this.prisma.deviceLinkChallenge.findUnique({
+        where: { codeHash: input.codeHash },
+      });
+      if (!row) {
+        throw new DomainError(ErrorCodes.deviceLinkInvalid, 409, PublicMessages.deviceLinkInvalid);
+      }
+      return toDeviceLink(row);
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async markConsumed(id: string, now: Date): Promise<DeviceLinkChallengeRecord | null> {
+    try {
+      const updated = await this.prisma.deviceLinkChallenge.updateMany({
+        where: { id, status: 'APPROVED' },
+        data: { status: 'CONSUMED', consumedAt: now },
+      });
+      if (updated.count !== 1) {
+        return null;
+      }
+      const row = await this.prisma.deviceLinkChallenge.findUnique({ where: { id } });
+      return row ? toDeviceLink(row) : null;
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async markExpiredIfNeeded(id: string, now: Date): Promise<DeviceLinkChallengeRecord | null> {
+    try {
+      await this.prisma.deviceLinkChallenge.updateMany({
+        where: { id, status: 'PENDING', expiresAt: { lte: now } },
+        data: { status: 'EXPIRED' },
+      });
+      const row = await this.prisma.deviceLinkChallenge.findUnique({ where: { id } });
+      return row ? toDeviceLink(row) : null;
+    } catch (error) {
+      bubble(error);
+    }
+  }
+}
+
+function toDeviceLink(row: {
+  id: string;
+  codeHash: string;
+  tvClientDeviceId: string;
+  tvClientDeviceIdHash: string;
+  platform: string;
+  deviceName: string | null;
+  status: string;
+  expiresAt: Date;
+  approvedAt: Date | null;
+  consumedAt: Date | null;
+  approverUserId: string | null;
+  deviceId: string | null;
+  createdAt: Date;
+}): DeviceLinkChallengeRecord {
+  return {
+    id: row.id,
+    codeHash: row.codeHash,
+    tvClientDeviceId: row.tvClientDeviceId,
+    tvClientDeviceIdHash: row.tvClientDeviceIdHash,
+    platform: row.platform as DeviceLinkChallengeRecord['platform'],
+    deviceName: row.deviceName,
+    status: row.status as DeviceLinkStatusCode,
+    expiresAt: row.expiresAt,
+    approvedAt: row.approvedAt,
+    consumedAt: row.consumedAt,
+    approverUserId: row.approverUserId,
+    deviceId: row.deviceId,
+    createdAt: row.createdAt,
+  };
 }
 
 async function applyLineSnapshot(
@@ -887,7 +1035,10 @@ function hashClientDeviceId(clientDeviceId: string): string {
   return createHash('sha256').update(clientDeviceId.trim().toLowerCase()).digest('hex');
 }
 
-/** Revoca dispositivos ACTIVE sin sesión no expirada (fantasmas tras logout o TTL). */
+/** Gracia tras claim/approve QR: el TV aún no canjeó tokens (poll). */
+const ORPHAN_GRACE_MS = 3 * 60 * 1000;
+
+/** Revoca dispositivos ACTIVE sin sesión viva (fantasmas), con gracia corta. */
 async function revokeOrphanDevicesInTx(
   tx: Prisma.TransactionClient,
   userId: string,
@@ -896,7 +1047,7 @@ async function revokeOrphanDevicesInTx(
 ): Promise<number> {
   const active = await tx.device.findMany({
     where: { userId, status: 'ACTIVE' },
-    select: { id: true },
+    select: { id: true, lastSeenAt: true },
   });
   let revoked = 0;
   for (const row of active) {
@@ -912,6 +1063,10 @@ async function revokeOrphanDevicesInTx(
       },
     });
     if (live > 0) {
+      continue;
+    }
+    // No tocar aparatos recién reclamados (p. ej. approve QR pendiente de poll).
+    if (row.lastSeenAt && now.getTime() - row.lastSeenAt.getTime() < ORPHAN_GRACE_MS) {
       continue;
     }
     await tx.device.update({
