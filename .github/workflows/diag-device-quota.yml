@@ -1,0 +1,84 @@
+name: diag-device-quota
+
+# Una vez: limpia slots legacy WEB del usuario XUI de pruebas y valida GET /devices (used/limit).
+# No imprime secretos ni tokens.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diag-device-quota-pruebas
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Liberar cupo legacy y validar used/limit
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+        run: |
+          set -eu
+          cd "$COMPOSE_DIR"
+          ln -sfn "$ENV_FILE" .env
+          xui_user=$(grep -E '^XUI_USERNAME=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          xui_pass=$(grep -E '^XUI_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          api_port=$(grep -E '^BACKEND_PORT=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          api_port=${api_port:-3100}
+          base="http://127.0.0.1:${api_port}"
+          if [ -z "$xui_user" ] || [ -z "$xui_pass" ]; then
+            echo "Faltan XUI_USERNAME/XUI_PASSWORD en el env del servidor." >&2
+            exit 1
+          fi
+
+          before=$(docker compose exec -T postgres psql -U cotas -d cotas_dev -Atc \
+            "SELECT count(*) FROM devices d JOIN iptv_accounts a ON a.user_id=d.user_id WHERE a.username='${xui_user}' AND d.status='ACTIVE';")
+          echo "active_before=${before}"
+
+          docker compose exec -T postgres psql -U cotas -d cotas_dev -v ON_ERROR_STOP=1 -c \
+            "UPDATE devices d SET status='REVOKED', revoked_at=NOW() FROM iptv_accounts a WHERE a.user_id=d.user_id AND a.username='${xui_user}' AND d.status='ACTIVE';"
+
+          after=$(docker compose exec -T postgres psql -U cotas -d cotas_dev -Atc \
+            "SELECT count(*) FROM devices d JOIN iptv_accounts a ON a.user_id=d.user_id WHERE a.username='${xui_user}' AND d.status='ACTIVE';")
+          echo "active_after=${after}"
+          test "$after" = "0"
+
+          device_id="7c9e6679-7425-40de-944b-e07fc1f90ae7"
+          body=$(mktemp)
+          resp=$(mktemp)
+          trap 'rm -f "$body" "$resp"' EXIT
+          BODY_FILE="$body" XUI_USER="$xui_user" XUI_PASS="$xui_pass" DEVICE_ID="$device_id" python3 -c '
+          import json,os
+          json.dump({
+            "username": os.environ["XUI_USER"],
+            "password": os.environ["XUI_PASS"],
+            "deviceId": os.environ["DEVICE_ID"],
+            "platform": "android",
+            "deviceName": "diag-quota"
+          }, open(os.environ["BODY_FILE"], "w"), separators=(",", ":"))
+          '
+          code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST "${base}/api/v1/auth/login" \
+            -H 'content-type: application/json' --data-binary @"$body")
+          echo "login_status=${code}"
+          test "$code" = "200"
+          token=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["accessToken"])' "$resp")
+          test -n "$token"
+
+          code=$(curl -sS -o "$resp" -w '%{http_code}' "${base}/api/v1/devices" -H "authorization: Bearer ${token}")
+          echo "devices_status=${code}"
+          test "$code" = "200"
+          python3 -c '
+          import json,sys
+          data=json.load(open(sys.argv[1]))
+          assert "used" in data and "limit" in data and "items" in data, data
+          assert data["used"] >= 1, data
+          assert data["limit"] is None or data["limit"] >= 1, data
+          assert any(i.get("current") for i in data["items"]), data
+          print("used=%s limit=%s items=%s" % (data["used"], data["limit"], len(data["items"])))
+          ' "$resp"
