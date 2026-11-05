@@ -35,14 +35,18 @@ Content-Type: application/json
 | `platform` | No | Texto libre corto; se normaliza a ANDROID/IOS/TV/WEB/OTHER |
 | `deviceName` | No | Etiqueta visible (máx. 80) |
 
-El cupo es `maxConnections` de XUI, aplicado sobre la tabla `devices` de COTAS (no sobre `active_cons` de XUI):
+El cupo es `maxConnections` de XUI, aplicado sobre la tabla `devices` de COTAS (no sobre `active_cons` / `activeConnections` de XUI):
 
 - Aparato ya registrado → reutiliza el slot y actualiza `lastSeenAt`.
 - Cupo lleno y aparato **nuevo** → `403` / `DEVICE_LIMIT` (en `details` vienen `used` y `limit`).
 - Si el cupo **baja** (p. ej. de 10 a 5) → en el siguiente login o al consultar suscripción se revocan los más antiguos (`lastSeenAt`) y se cierran sus sesiones; se conserva el aparato actual si ya estaba registrado.
-- En TV/móvil conviene enviar siempre el mismo `deviceId` estable. Sin él, cada User-Agent distinto puede consumir un slot “fantasma” y llenar el cupo aunque la UI solo destaque el aparato actual.
+- **Logout** o sesión expirada → el dispositivo queda libre (ya no cuenta en el cupo).
+- En login / `GET /devices` se revocan “fantasmas” (`ACTIVE` sin sesión viva).
+- En TV/móvil conviene enviar siempre el mismo `deviceId` estable.
 
 Personal del panel (admin/operador con contraseña local) **no** usa cupo ni exige `deviceId`.
+
+**UI:** el contador `x/y` debe usar `GET /devices` (`used`/`limit`) o `devicesUsed`/`devicesLimit` de suscripción — **no** `activeConnections` (eso es reproducción XUI y puede mostrar `0/3` con el cupo de apps lleno).
 
 ### Listar / revocar dispositivos
 
@@ -104,6 +108,8 @@ Al responder, el backend intenta refrescar el estado en XUI (`player_api` / `use
   "expiresAt": "2026-12-31T23:59:59.000Z",
   "maxConnections": 3,
   "activeConnections": 1,
+  "devicesUsed": 1,
+  "devicesLimit": 3,
   "status": "Active",
   "lastVerifiedAt": "2026-11-02T19:00:00.000Z",
   "source": "live"
@@ -113,7 +119,8 @@ Al responder, el backend intenta refrescar el estado en XUI (`player_api` / `use
 | Campo | Significado |
 | --- | --- |
 | `maxConnections` | Cupo de **dispositivos de app** en COTAS (mismo valor que XUI); al bajar, se evictan los más viejos |
-| `activeConnections` | Conexiones concurrentes de **streaming** reportadas por XUI (informativo) |
+| `devicesUsed` / `devicesLimit` | Contador `x/y` de aparatos COTAS (mismo criterio que `GET /devices`) |
+| `activeConnections` | Streams abiertos en XUI (informativo; **no** usar para “dispositivos de app”) |
 | `expiresAt` | Vencimiento de la línea (`exp_date`); `null` si XUI no informa |
 | `source` | `live` = recién consultado a XUI; `cache` = degradación |
 

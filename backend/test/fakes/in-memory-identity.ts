@@ -204,6 +204,7 @@ export class InMemoryIdentity
     const existing = this.devices.find(
       (device) => device.userId === input.userId && device.deviceIdentifierHash === hash,
     );
+    this.revokeOrphansInMemory(input.userId, input.now, existing?.id ?? null);
     if (existing) {
       if (existing.status !== 'ACTIVE') {
         this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
@@ -247,6 +248,7 @@ export class InMemoryIdentity
   }
 
   async listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView> {
+    this.revokeOrphansInMemory(userId, new Date(), currentDeviceId);
     const items = this.devices
       .filter((device) => device.userId === userId && device.status === 'ACTIVE')
       .sort(
@@ -383,6 +385,25 @@ export class InMemoryIdentity
     }
     session.revokedAt = now;
     session.revocationReason = reason;
+    if (session.deviceId) {
+      const liveOnDevice = this.sessions.some(
+        (item) =>
+          item.deviceId === session.deviceId &&
+          item.userId === userId &&
+          !item.revokedAt &&
+          item.expiresAt > now,
+      );
+      if (!liveOnDevice) {
+        const device = this.devices.find(
+          (item) =>
+            item.id === session.deviceId && item.userId === userId && item.status === 'ACTIVE',
+        );
+        if (device) {
+          device.status = 'REVOKED';
+          device.revokedAt = now;
+        }
+      }
+    }
     this.pushAudit(audit, userId);
     return 'revoked';
   }
@@ -432,6 +453,28 @@ export class InMemoryIdentity
       if (session.familyId === familyId && !session.revokedAt) {
         session.revokedAt = now;
         session.revocationReason = 'REUSE';
+      }
+    }
+  }
+
+  private revokeOrphansInMemory(userId: string, now: Date, keepDeviceId: string | null): void {
+    for (const device of this.devices) {
+      if (device.userId !== userId || device.status !== 'ACTIVE') {
+        continue;
+      }
+      if (keepDeviceId && device.id === keepDeviceId) {
+        continue;
+      }
+      const live = this.sessions.some(
+        (session) =>
+          session.deviceId === device.id &&
+          session.userId === userId &&
+          !session.revokedAt &&
+          session.expiresAt > now,
+      );
+      if (!live) {
+        device.status = 'REVOKED';
+        device.revokedAt = now;
       }
     }
   }

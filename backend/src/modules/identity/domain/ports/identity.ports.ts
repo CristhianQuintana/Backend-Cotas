@@ -125,7 +125,12 @@ export interface SubscriptionSnapshot {
   username: string | null;
   expiresAt: string | null;
   maxConnections: number | null;
+  /** Conexiones de reproducción en XUI (no es el cupo de apps COTAS). */
   activeConnections: number | null;
+  /** Dispositivos de app ACTIVE en COTAS (`GET /devices` → used). */
+  devicesUsed?: number;
+  /** Igual que maxConnections / `GET /devices` → limit. */
+  devicesLimit?: number | null;
   status: string | null;
   lastVerifiedAt: string | null;
   source: 'live' | 'cache';

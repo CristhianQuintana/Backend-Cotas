@@ -38,11 +38,14 @@ export class GetSubscriptionUseCase {
         };
         await this.lines.saveLineSnapshot(user.id, snapshot, now);
         await this.lines.enforceDeviceQuota(user.id, line.maxConnections, now, user.deviceId);
+        const devices = await this.lines.listDevices(user.id, user.deviceId);
         return {
           ...snapshot,
           username: line.username ?? credentials.username,
           lastVerifiedAt: now.toISOString(),
           source: 'live',
+          devicesUsed: devices.used,
+          devicesLimit: devices.limit,
         };
       }
     } catch (error) {
@@ -57,6 +60,11 @@ export class GetSubscriptionUseCase {
     if (!cached) {
       throw new DomainError(ErrorCodes.unauthorized, 401, PublicMessages.unauthorized);
     }
-    return cached;
+    const devices = await this.lines.listDevices(user.id, user.deviceId);
+    return {
+      ...cached,
+      devicesUsed: devices.used,
+      devicesLimit: devices.limit ?? cached.maxConnections,
+    };
   }
 }

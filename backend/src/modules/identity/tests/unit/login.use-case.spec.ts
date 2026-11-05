@@ -196,9 +196,10 @@ describe('identidad', () => {
       mfaSecretCiphertext: null,
     });
 
+    // Intervalos cortos: las sesiones siguen vivas (refresh TTL de prueba = 1 h).
     const t0 = new Date('2026-10-19T12:00:00.000Z');
-    const t1 = new Date('2026-10-19T13:00:00.000Z');
-    const t2 = new Date('2026-10-19T14:00:00.000Z');
+    const t1 = new Date('2026-10-19T12:10:00.000Z');
+    const t2 = new Date('2026-10-19T12:20:00.000Z');
     clock.now = () => t0;
     await login.execute({
       username: 'viewer.demo',
@@ -223,7 +224,7 @@ describe('identidad', () => {
     expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(3);
 
     xui.line.maxConnections = 1;
-    clock.now = () => new Date('2026-10-19T15:00:00.000Z');
+    clock.now = () => new Date('2026-10-19T12:30:00.000Z');
     await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
@@ -236,6 +237,62 @@ describe('identidad', () => {
     expect(active[0]?.deviceIdentifierHash).toBe(
       createHash('sha256').update(deviceA).digest('hex'),
     );
+  });
+
+  it('libera slots fantasma (ACTIVE sin sesión viva) para permitir login en TV', async () => {
+    const { identity, login, xui } = setup();
+    xui.line.maxConnections = 3;
+    xui.lines.set('viewer.demo', 'correct-horse-battery');
+    addUser(identity, {
+      username: 'viewer.demo',
+      role: 'CUSTOMER',
+      status: 'ACTIVE',
+      mfaEnabled: false,
+      mfaSecretCiphertext: null,
+    });
+
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceA,
+      platform: 'android',
+      meta,
+    });
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceB,
+      platform: 'ios',
+      meta,
+    });
+    await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceC,
+      platform: 'tv',
+      meta,
+    });
+    expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(3);
+
+    // Simula logout/expiración: sesiones cerradas pero devices quedan ACTIVE (bug histórico).
+    const now = new Date('2026-11-05T18:00:00.000Z');
+    clock.now = () => now;
+    for (const session of identity.sessions) {
+      session.revokedAt = now;
+      session.revocationReason = 'LOGOUT';
+    }
+    expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(3);
+
+    const tv = await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: 'tv-living-stable-001',
+      platform: 'tv',
+      deviceName: 'Living TV',
+      meta,
+    });
+    expect(tv.type).toBe('authenticated');
+    expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(1);
   });
 
   it('autentica personal con contraseña local Argon2 sin MFA', async () => {

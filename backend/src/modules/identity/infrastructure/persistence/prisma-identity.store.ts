@@ -304,6 +304,8 @@ export class PrismaIdentityStore
         const existing = await tx.device.findFirst({
           where: { userId: input.userId, deviceIdentifierHash: hash },
         });
+        // Libera slots “fantasma”: ACTIVE sin sesión viva (logout/expiración sin liberar el cupo).
+        await revokeOrphanDevicesInTx(tx, input.userId, input.now, existing?.id ?? null);
         if (existing) {
           if (existing.status !== 'ACTIVE') {
             await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, null);
@@ -366,6 +368,10 @@ export class PrismaIdentityStore
 
   async listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView> {
     try {
+      const now = new Date();
+      await this.prisma.$transaction(async (tx) =>
+        revokeOrphanDevicesInTx(tx, userId, now, currentDeviceId),
+      );
       const [rows, snapshot] = await Promise.all([
         this.prisma.device.findMany({
           where: { userId, status: 'ACTIVE' },
@@ -516,12 +522,33 @@ export class PrismaIdentityStore
   ): Promise<'revoked' | 'not_found'> {
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.userSession.updateMany({
+        const current = await tx.userSession.findFirst({
           where: { id, userId, revokedAt: null },
+          select: { id: true, deviceId: true },
+        });
+        if (!current) {
+          return 'not_found';
+        }
+        await tx.userSession.update({
+          where: { id: current.id },
           data: { revokedAt: now, revokeReason: reason },
         });
-        if (updated.count !== 1) {
-          return 'not_found';
+        // Logout libera el cupo: sin más sesiones vivas en ese aparato → REVOKED.
+        if (current.deviceId) {
+          const liveOnDevice = await tx.userSession.count({
+            where: {
+              deviceId: current.deviceId,
+              userId,
+              revokedAt: null,
+              expiresAt: { gt: now },
+            },
+          });
+          if (liveOnDevice === 0) {
+            await tx.device.updateMany({
+              where: { id: current.deviceId, userId, status: 'ACTIVE' },
+              data: { status: 'REVOKED', revokedAt: now },
+            });
+          }
         }
         await tx.auditLog.create({ data: auditData(audit, userId) });
         return 'revoked';
@@ -856,6 +883,42 @@ function toSessionData(
 
 function hashClientDeviceId(clientDeviceId: string): string {
   return createHash('sha256').update(clientDeviceId.trim().toLowerCase()).digest('hex');
+}
+
+/** Revoca dispositivos ACTIVE sin sesión no expirada (fantasmas tras logout o TTL). */
+async function revokeOrphanDevicesInTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  now: Date,
+  keepDeviceId: string | null,
+): Promise<number> {
+  const active = await tx.device.findMany({
+    where: { userId, status: 'ACTIVE' },
+    select: { id: true },
+  });
+  let revoked = 0;
+  for (const row of active) {
+    if (keepDeviceId && row.id === keepDeviceId) {
+      continue;
+    }
+    const live = await tx.userSession.count({
+      where: {
+        deviceId: row.id,
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: now },
+      },
+    });
+    if (live > 0) {
+      continue;
+    }
+    await tx.device.update({
+      where: { id: row.id },
+      data: { status: 'REVOKED', revokedAt: now },
+    });
+    revoked += 1;
+  }
+  return revoked;
 }
 
 async function enforceDeviceQuotaInTx(
