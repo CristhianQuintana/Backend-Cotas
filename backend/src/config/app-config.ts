@@ -35,6 +35,8 @@ export interface AppConfig {
   redisPassword: string | null;
   catalogCacheTtlSeconds: number;
   catalogEpgCacheTtlSeconds: number;
+  /** TTL de firma de `/media/asset` (ventana estable para caché de TV/CDN). */
+  mediaAssetTtlSeconds: number;
   catalogSyncIntervalMs: number;
   catalogSyncConcurrency: number;
   fcmEnabled: boolean;

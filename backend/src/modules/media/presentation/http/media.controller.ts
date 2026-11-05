@@ -76,7 +76,12 @@ export class MediaController {
       }
       res.status(200);
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'private, max-age=3600');
+      // URL firmada (exp+sig): segura para caché pública en TV/CDN mientras no expire.
+      const remainingSec = Math.max(60, Math.floor(exp - Date.now() / 1000));
+      res.setHeader(
+        'Cache-Control',
+        `public, max-age=${Math.min(remainingSec, 86_400)}, stale-while-revalidate=604800`,
+      );
       const buf = Buffer.from(await upstreamRes.arrayBuffer());
       if (buf.byteLength > 2_000_000) {
         throw new DomainError(ErrorCodes.upstreamInvalid, 502, PublicMessages.upstreamInvalid);

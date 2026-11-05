@@ -69,6 +69,8 @@ Todas requieren Bearer salvo salud.
 | Uso | Método y ruta |
 | --- | --- |
 | Salud | `GET /health/live` |
+| Home (1 RTT) | `GET /catalog/home` |
+| Sesión (perfil+abono) | `GET /auth/session` |
 | Categorías live | `GET /catalog/live/categories` |
 | Canales | `GET /catalog/live/streams?page=1&limit=50&categoryId=` |
 | Categorías VOD | `GET /catalog/vod/categories` |

@@ -28,6 +28,7 @@ import {
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { GetProfileUseCase, LogoutUseCase } from '../../application/use-cases/session.use-cases';
 import { RefreshSessionUseCase } from '../../application/use-cases/refresh-session.use-case';
+import { GetSubscriptionUseCase } from '../../application/use-cases/subscription.use-case';
 import { ConfirmMfaRequestDto, LoginRequestDto, RefreshRequestDto } from './dto/auth.dto';
 
 @ApiTags('identity')
@@ -38,6 +39,7 @@ export class IdentityController {
     @Inject(RefreshSessionUseCase) private readonly refreshUseCase: RefreshSessionUseCase,
     @Inject(LogoutUseCase) private readonly logoutUseCase: LogoutUseCase,
     @Inject(GetProfileUseCase) private readonly profileUseCase: GetProfileUseCase,
+    @Inject(GetSubscriptionUseCase) private readonly subscriptionUseCase: GetSubscriptionUseCase,
     @Inject(BeginMfaEnrollmentUseCase) private readonly beginMfa: BeginMfaEnrollmentUseCase,
     @Inject(ConfirmMfaEnrollmentUseCase) private readonly confirmMfa: ConfirmMfaEnrollmentUseCase,
   ) {}
@@ -69,6 +71,17 @@ export class IdentityController {
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.profileUseCase.execute(user);
+  }
+
+  /** Perfil + suscripción en un solo round-trip (restore de sesión en apps). */
+  @ApiBearerAuth()
+  @Get('session')
+  async session(@CurrentUser() user: AuthenticatedUser) {
+    const [profile, subscription] = await Promise.all([
+      this.profileUseCase.execute(user),
+      this.subscriptionUseCase.execute(user).catch(() => null),
+    ]);
+    return { profile, subscription };
   }
 
   @Public()

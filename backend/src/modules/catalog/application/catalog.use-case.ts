@@ -186,12 +186,95 @@ export class CatalogUseCase {
     return presentChannelEpg(streamId, items);
   }
 
+  /**
+   * Bootstrap del Home: una sola respuesta con heroes + carriles livianos.
+   * Usa las mismas cachés Redis/memoria que los listados (sin fan-out extra a XUI si ya están calientes).
+   */
+  async home(credentials?: XuiCredentials): Promise<CatalogHomeView> {
+    const scope = `user:${credentials?.username ?? 'server'}`;
+    const cacheKey = catalogCacheKey(scope, 'home:v1');
+    const ttl = this.config?.catalogCacheTtlSeconds ?? 300;
+    const cached = await this.memory.getJson<CatalogHomeView>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    const fromShared = await this.shared.getJson<CatalogHomeView>(cacheKey);
+    if (fromShared) {
+      await this.memory.setJson(cacheKey, fromShared, Math.min(ttl, 60));
+      return fromShared;
+    }
+
+    const [livePage, vodPage, seriesPage, vodCategories] = await Promise.all([
+      this.liveStreams({ page: 1, limit: 16 }, credentials),
+      this.vodStreams({ page: 1, limit: 48 }, credentials),
+      this.series({ page: 1, limit: 16 }, credentials),
+      this.vodCategories({ page: 1, limit: 8 }, credentials),
+    ]);
+
+    const liveItems = livePage.items.map((item) => toHomeItem(item, 'live'));
+    const vodItems = vodPage.items.map((item) => toHomeItem(item, 'vod'));
+    const seriesItems = seriesPage.items.map((item) => toHomeItem(item, 'series'));
+
+    const rails: CatalogHomeRail[] = [
+      {
+        id: 'live-featured',
+        title: 'Canales en vivo',
+        section: 'live',
+        items: liveItems.slice(0, 16),
+      },
+      {
+        id: 'vod-featured',
+        title: 'Películas',
+        section: 'vod',
+        items: vodItems.slice(0, 16),
+      },
+      {
+        id: 'series-featured',
+        title: 'Series',
+        section: 'series',
+        items: seriesItems.slice(0, 16),
+      },
+    ];
+
+    for (const category of vodCategories.items.slice(0, 4)) {
+      const railItems = vodPage.items
+        .filter(
+          (item) =>
+            item.categoryId === category.id || (item.categoryIds?.includes(category.id) ?? false),
+        )
+        .slice(0, 12)
+        .map((item) => toHomeItem(item, 'vod'));
+      if (railItems.length === 0) {
+        continue;
+      }
+      rails.push({
+        id: `genre-${category.id}`,
+        title: category.name,
+        section: 'vod',
+        items: railItems,
+      });
+    }
+
+    const heroes = [...vodItems, ...seriesItems]
+      .filter((item) => Boolean(item.posterUrl))
+      .slice(0, 8);
+
+    const view: CatalogHomeView = {
+      generatedAt: new Date().toISOString(),
+      heroes,
+      rails,
+    };
+    await this.memory.setJson(cacheKey, view, Math.min(ttl, 60));
+    await this.shared.setJson(cacheKey, view, ttl);
+    return view;
+  }
+
   async shortEpgBatch(
     streamIds: string[],
     credentials?: XuiCredentials,
     limit = 12,
   ): Promise<{ generatedAt: string; channels: ReturnType<typeof presentChannelEpg>[] }> {
-    const unique = [...new Set(streamIds)].slice(0, 20);
+    const unique = [...new Set(streamIds)].slice(0, 50);
     if (unique.length === 0) {
       return { generatedAt: new Date().toISOString(), channels: [] };
     }
@@ -344,6 +427,72 @@ export class CatalogUseCase {
     await this.shared.setJson(key, value, ttl);
     return value;
   }
+}
+
+export type CatalogHomeSection = 'live' | 'vod' | 'series';
+
+export interface CatalogHomeItem {
+  id: string;
+  name: string;
+  section: CatalogHomeSection;
+  posterUrl: string | null;
+  categoryId: string | null;
+  year: string | null;
+  rating: string | null;
+}
+
+export interface CatalogHomeRail {
+  id: string;
+  title: string;
+  section: CatalogHomeSection;
+  items: CatalogHomeItem[];
+}
+
+export interface CatalogHomeView {
+  generatedAt: string;
+  heroes: CatalogHomeItem[];
+  rails: CatalogHomeRail[];
+}
+
+function toHomeItem(
+  item: {
+    id: string;
+    name: string;
+    posterUrl?: string | null;
+    iconUrl?: string | null;
+    categoryId?: string | null;
+    year?: string | null;
+    rating?: string | null;
+  },
+  section: CatalogHomeSection,
+): CatalogHomeItem {
+  return {
+    id: item.id,
+    name: item.name,
+    section,
+    posterUrl: item.posterUrl ?? item.iconUrl ?? null,
+    categoryId: item.categoryId ?? null,
+    year: item.year ?? null,
+    rating: item.rating ?? null,
+  };
+}
+
+/** Campos mínimos para grillas (menos payload que el objeto XUI completo). */
+export function toCatalogGridItem<T extends Record<string, unknown>>(
+  item: T,
+): Record<string, unknown> {
+  return {
+    id: item.id,
+    name: item.name,
+    categoryId: item.categoryId ?? null,
+    categoryIds: item.categoryIds,
+    posterUrl: item.posterUrl ?? item.iconUrl ?? null,
+    iconUrl: item.iconUrl ?? item.posterUrl ?? null,
+    backdropUrl: item.backdropUrl ?? null,
+    year: item.year ?? null,
+    rating: item.rating ?? null,
+    epgChannelId: item.epgChannelId,
+  };
 }
 
 function sortByName<T extends { name: string }>(items: T[]): T[] {

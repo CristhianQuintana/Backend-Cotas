@@ -139,6 +139,12 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     30,
     3_600,
   );
+  const mediaAssetTtlSeconds = integer(
+    raw.MEDIA_ASSET_TTL_SECONDS ?? '86400',
+    'MEDIA_ASSET_TTL_SECONDS',
+    3_600,
+    604_800,
+  );
   const catalogSyncIntervalMs = integer(
     raw.CATALOG_SYNC_INTERVAL_MS ?? '300000',
     'CATALOG_SYNC_INTERVAL_MS',
@@ -196,6 +202,7 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     redisPassword,
     catalogCacheTtlSeconds,
     catalogEpgCacheTtlSeconds,
+    mediaAssetTtlSeconds,
     catalogSyncIntervalMs,
     catalogSyncConcurrency,
     fcmEnabled,

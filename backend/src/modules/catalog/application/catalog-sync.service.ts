@@ -66,6 +66,8 @@ export class CatalogSyncService {
         announcementCount += await this.publishNewContent(resource, items);
       }
     }
+    // Invalida bootstrap Home para que el próximo GET lo reconstruya con datos frescos.
+    await this.cache.del(catalogCacheKey(scope, 'home:v1'));
 
     const durationMs = Date.now() - started;
     this.logger.log(

@@ -27,6 +27,7 @@ describe('caché de catálogo', () => {
     const catalog = new CatalogUseCase(xui, cache, {
       catalogCacheTtlSeconds: 300,
       catalogEpgCacheTtlSeconds: 120,
+      mediaAssetTtlSeconds: 86_400,
     } as never);
 
     await catalog.liveStreams({ page: 1, limit: 20 });

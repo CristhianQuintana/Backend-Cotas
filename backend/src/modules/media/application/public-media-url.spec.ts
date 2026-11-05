@@ -1,5 +1,5 @@
 import { toPublicMediaUrl } from './public-media-url';
-import { signMedia } from './sign-media-url';
+import { mediaExpiryUnix, signMedia } from './sign-media-url';
 
 describe('toPublicMediaUrl', () => {
   const secret = 'x'.repeat(32);
@@ -31,6 +31,26 @@ describe('toPublicMediaUrl', () => {
       allowedHosts: [streamHost],
     });
     expect(signed).toContain('/media/asset?');
+  });
+
+  it('reutiliza la misma firma dentro de la ventana de TTL', () => {
+    const upstream = `http://${panelLan}/images/stable.jpg`;
+    const a = toPublicMediaUrl({
+      raw: upstream,
+      publicApiBase: 'https://api.cotasperu.com/api/v1',
+      secret,
+      allowedHosts: allowed,
+      ttlSeconds: 86_400,
+    });
+    const b = toPublicMediaUrl({
+      raw: upstream,
+      publicApiBase: 'https://api.cotasperu.com/api/v1',
+      secret,
+      allowedHosts: allowed,
+      ttlSeconds: 86_400,
+    });
+    expect(a).toBe(b);
+    expect(mediaExpiryUnix(86_400)).toBeGreaterThan(Math.floor(Date.now() / 1000));
   });
 
   it('no altera CDN externos ni URLs ya proxificadas', () => {

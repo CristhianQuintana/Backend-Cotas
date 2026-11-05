@@ -45,6 +45,7 @@ export function mapPublicMediaFields<T extends Record<string, unknown>>(
     publicApiBase: string;
     secret: string;
     allowedHosts: readonly string[];
+    ttlSeconds?: number;
   },
 ): T {
   const next: Record<string, unknown> = { ...item };
@@ -59,6 +60,7 @@ export function mapPublicMediaFields<T extends Record<string, unknown>>(
         publicApiBase: ctx.publicApiBase,
         secret: ctx.secret,
         allowedHosts: ctx.allowedHosts,
+        ttlSeconds: ctx.ttlSeconds,
       });
     }
   }

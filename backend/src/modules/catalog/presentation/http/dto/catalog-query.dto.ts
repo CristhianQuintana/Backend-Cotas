@@ -73,11 +73,11 @@ export class EpgQueryDto {
 export class EpgBatchQueryDto extends EpgQueryDto {
   @ApiProperty({
     example: '101,102,103',
-    description: 'Hasta 20 streamId separados por coma.',
+    description: 'Hasta 50 streamId separados por coma.',
   })
   @IsString()
-  @MaxLength(260)
-  @Matches(/^[0-9]{1,12}(,[0-9]{1,12}){0,19}$/u)
+  @MaxLength(700)
+  @Matches(/^[0-9]{1,12}(,[0-9]{1,12}){0,49}$/u)
   streamIds!: string;
 }
 

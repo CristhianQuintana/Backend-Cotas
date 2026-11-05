@@ -1,13 +1,14 @@
-import { Controller, Get, Inject, Param, Query, Req } from '@nestjs/common';
+import { Controller, Get, Inject, Param, Query, Req, Res } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
 import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 import type { AuthenticatedUser } from '../../../identity/domain/models/authenticated-user';
 import { LINE_ACCESS, type LineAccess } from '../../../identity/domain/ports/identity.ports';
 import { mapPublicMediaFields } from '../../../media/application/public-media-url';
 import { CatalogAnnouncementsService } from '../../application/catalog-announcements.service';
-import { CatalogUseCase } from '../../application/catalog.use-case';
+import { CatalogUseCase, toCatalogGridItem } from '../../application/catalog.use-case';
+import { applyCatalogCacheHeaders } from './catalog-http-cache';
 import {
   CatalogQueryDto,
   EpgBatchQueryDto,
@@ -30,15 +31,48 @@ export class CatalogController {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
+  @Get('home')
+  async home(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const credentials = await this.lines.credentialsFor(user.id);
+    const view = await this.catalog.home(credentials);
+    const signed = {
+      ...view,
+      heroes: view.heroes.map((item) => this.signItem(item, ['posterUrl'], req)),
+      rails: view.rails.map((rail) => ({
+        ...rail,
+        items: rail.items.map((item) => this.signItem(item, ['posterUrl'], req)),
+      })),
+    };
+    if (
+      applyCatalogCacheHeaders(req, res, signed, {
+        maxAgeSeconds: 60,
+        privateCache: true,
+      }) === 'not_modified'
+    ) {
+      return;
+    }
+    return signed;
+  }
+
   @Get('announcements')
   listAnnouncements(@Query() query: CatalogQueryDto) {
     return this.announcements.list(query.page ?? 1, query.limit ?? 20);
   }
 
   @Get('live/categories')
-  async liveCategories(@CurrentUser() user: AuthenticatedUser, @Query() query: CatalogQueryDto) {
+  async liveCategories(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CatalogQueryDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.liveCategories(normalize(query), credentials);
+    const page = await this.catalog.liveCategories(normalize(query), credentials);
+    return this.cached(req, res, page, 120);
   }
 
   @Get('live/streams')
@@ -46,16 +80,23 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: CatalogQueryDto,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const page = await this.catalog.liveStreams(normalize(query), credentials);
-    return this.signPage(page, ['iconUrl', 'posterUrl'], req);
+    return this.cached(req, res, this.signGridPage(page, ['iconUrl', 'posterUrl'], req), 60);
   }
 
   @Get('vod/categories')
-  async vodCategories(@CurrentUser() user: AuthenticatedUser, @Query() query: CatalogQueryDto) {
+  async vodCategories(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CatalogQueryDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.vodCategories(normalize(query), credentials);
+    const page = await this.catalog.vodCategories(normalize(query), credentials);
+    return this.cached(req, res, page, 120);
   }
 
   @Get('vod/streams')
@@ -63,11 +104,11 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: CatalogQueryDto,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const page = await this.catalog.vodStreams(normalize(query), credentials);
-    // Listados VOD: miniatura; backdrop solo en detalle.
-    return this.signPage(page, ['iconUrl', 'posterUrl'], req);
+    return this.cached(req, res, this.signGridPage(page, ['iconUrl', 'posterUrl'], req), 60);
   }
 
   @Get('vod/streams/:streamId')
@@ -82,9 +123,15 @@ export class CatalogController {
   }
 
   @Get('series/categories')
-  async seriesCategories(@CurrentUser() user: AuthenticatedUser, @Query() query: CatalogQueryDto) {
+  async seriesCategories(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: CatalogQueryDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
-    return this.catalog.seriesCategories(normalize(query), credentials);
+    const page = await this.catalog.seriesCategories(normalize(query), credentials);
+    return this.cached(req, res, page, 120);
   }
 
   @Get('series')
@@ -92,10 +139,11 @@ export class CatalogController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: CatalogQueryDto,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const page = await this.catalog.series(normalize(query), credentials);
-    return this.signPage(page, ['posterUrl'], req);
+    return this.cached(req, res, this.signGridPage(page, ['posterUrl'], req), 60);
   }
 
   @Get('series/:seriesId')
@@ -165,10 +213,16 @@ export class CatalogController {
   }
 
   @Get('live/epg')
-  async epgBatch(@CurrentUser() user: AuthenticatedUser, @Query() query: EpgBatchQueryDto) {
+  async epgBatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: EpgBatchQueryDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const credentials = await this.lines.credentialsFor(user.id);
     const streamIds = query.streamIds.split(',').map((id) => id.trim());
-    return this.catalog.shortEpgBatch(streamIds, credentials, query.limit ?? 12);
+    const batch = await this.catalog.shortEpgBatch(streamIds, credentials, query.limit ?? 12);
+    return this.cached(req, res, batch, 30, true);
   }
 
   @Get('live/streams/:streamId/epg')
@@ -181,11 +235,27 @@ export class CatalogController {
     return this.catalog.shortEpg(params.streamId, credentials, query.limit ?? 12);
   }
 
+  private cached(
+    req: Request,
+    res: Response,
+    body: unknown,
+    maxAgeSeconds: number,
+    privateCache = true,
+  ) {
+    if (
+      applyCatalogCacheHeaders(req, res, body, { maxAgeSeconds, privateCache }) === 'not_modified'
+    ) {
+      return;
+    }
+    return body;
+  }
+
   private mediaCtx(req: Request) {
     return {
       publicApiBase: publicApiBaseFromRequest(req),
       secret: this.config.jwtAccessSecret,
       allowedHosts: this.config.xuiAllowedStreamHosts,
+      ttlSeconds: this.config.mediaAssetTtlSeconds,
     };
   }
 
@@ -197,6 +267,19 @@ export class CatalogController {
     return {
       ...page,
       items: page.items.map((item) => this.signItem(item, keys, req)),
+    };
+  }
+
+  private signGridPage<T extends object>(
+    page: { items: readonly T[]; page?: number; limit?: number; total?: number },
+    keys: readonly string[],
+    req: Request,
+  ) {
+    return {
+      ...page,
+      items: page.items.map((item) =>
+        this.signItem(toCatalogGridItem(item as unknown as Record<string, unknown>), keys, req),
+      ),
     };
   }
 }
