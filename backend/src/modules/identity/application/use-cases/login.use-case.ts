@@ -114,10 +114,9 @@ export class LoginUseCase {
       return this.failLogin(command.meta, accepted.user.id, 'staff_via_xui');
     }
 
-    // Compat: apps que aún no envían deviceId siguen entrando con huella de User-Agent.
+    // Compat: sin deviceId se usa huella de User-Agent normalizada (menos “fantasmas” por versiones).
     const clientDeviceId =
-      command.deviceId?.trim() ||
-      `ua:${(command.meta.userAgent ?? 'web').trim().toLowerCase().slice(0, 160) || 'web'}`;
+      command.deviceId?.trim() || fingerprintFromUserAgent(command.meta.userAgent);
 
     const deviceId = await this.lines.claimDeviceSlot({
       userId: accepted.user.id,
@@ -192,6 +191,16 @@ export class LoginUseCase {
     });
     throw new DomainError(ErrorCodes.invalidCredentials, 401, PublicMessages.invalidCredentials);
   }
+}
+
+function fingerprintFromUserAgent(userAgent: string | null | undefined): string {
+  const raw = (userAgent ?? 'web').trim().toLowerCase();
+  const normalized = raw
+    .replace(/\d+(\.\d+)+/gu, 'x')
+    .replace(/\s+/gu, ' ')
+    .slice(0, 120)
+    .trim();
+  return `ua:${normalized || 'web'}`;
 }
 
 function mapPlatform(value: string | undefined, userAgent?: string | null): DevicePlatformCode {

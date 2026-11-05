@@ -38,8 +38,9 @@ Content-Type: application/json
 El cupo es `maxConnections` de XUI, aplicado sobre la tabla `devices` de COTAS (no sobre `active_cons` de XUI):
 
 - Aparato ya registrado → reutiliza el slot y actualiza `lastSeenAt`.
-- Cupo lleno y aparato **nuevo** → `403` / `DEVICE_LIMIT`.
+- Cupo lleno y aparato **nuevo** → `403` / `DEVICE_LIMIT` (en `details` vienen `used` y `limit`).
 - Si el cupo **baja** (p. ej. de 10 a 5) → en el siguiente login o al consultar suscripción se revocan los más antiguos (`lastSeenAt`) y se cierran sus sesiones; se conserva el aparato actual si ya estaba registrado.
+- En TV/móvil conviene enviar siempre el mismo `deviceId` estable. Sin él, cada User-Agent distinto puede consumir un slot “fantasma” y llenar el cupo aunque la UI solo destaque el aparato actual.
 
 Personal del panel (admin/operador con contraseña local) **no** usa cupo ni exige `deviceId`.
 

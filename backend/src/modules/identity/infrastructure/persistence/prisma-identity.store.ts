@@ -312,7 +312,10 @@ export class PrismaIdentityStore
                 where: { userId: input.userId, status: 'ACTIVE' },
               });
               if (active >= input.maxDevices) {
-                throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
+                throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+                  { field: 'used', rules: [String(active)] },
+                  { field: 'limit', rules: [String(input.maxDevices)] },
+                ]);
               }
             }
           }
@@ -336,7 +339,10 @@ export class PrismaIdentityStore
             where: { userId: input.userId, status: 'ACTIVE' },
           });
           if (active >= input.maxDevices) {
-            throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
+            throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+              { field: 'used', rules: [String(active)] },
+              { field: 'limit', rules: [String(input.maxDevices)] },
+            ]);
           }
         }
 
