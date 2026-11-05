@@ -1,0 +1,97 @@
+name: diag-login-devices
+
+# Inspecciona cupo/dispositivos del usuario XUI de pruebas (sin imprimir secretos).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diag-login-devices-pruebas
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Estado de devices y login TV simulado
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+        run: |
+          set -eu
+          cd "$COMPOSE_DIR"
+          ln -sfn "$ENV_FILE" .env
+          xui_user=$(grep -E '^XUI_USERNAME=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          xui_pass=$(grep -E '^XUI_PASSWORD=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          api_port=$(grep -E '^BACKEND_PORT=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+          api_port=${api_port:-3100}
+          base="http://127.0.0.1:${api_port}"
+          pg_user=$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+          pg_db=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+          pg_user=${pg_user:-cotas}
+          pg_db=${pg_db:-cotas_dev}
+          xui_sql=$(printf "%s" "$xui_user" | sed "s/'/''/g")
+
+          echo "=== iptv snapshot ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c \
+            "SELECT username, max_connections, active_connections, status, last_verified_at FROM iptv_accounts WHERE username='${xui_sql}';"
+
+          echo "=== devices ACTIVE/REVOKED ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c \
+            "SELECT d.status, d.platform, d.device_name, left(d.device_identifier_hash,12) AS hash12, d.last_seen_at, d.created_at, d.revoked_at
+             FROM devices d
+             JOIN iptv_accounts a ON a.user_id=d.user_id
+             WHERE a.username='${xui_sql}'
+             ORDER BY d.status, d.last_seen_at DESC NULLS LAST;"
+
+          echo "=== counts ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -Atc \
+            "SELECT 'active='||count(*) FILTER (WHERE d.status='ACTIVE')||' revoked='||count(*) FILTER (WHERE d.status='REVOKED')
+             FROM devices d JOIN iptv_accounts a ON a.user_id=d.user_id WHERE a.username='${xui_sql}';"
+
+          echo "=== recent auth.login audits (no metadata secrets) ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c \
+            "SELECT occurred_at, result, left(correlation_id::text,8) AS corr
+             FROM audit_logs
+             WHERE action='auth.login'
+             ORDER BY occurred_at DESC
+             LIMIT 15;"
+
+          body=$(mktemp)
+          resp=$(mktemp)
+          trap 'rm -f "$body" "$resp"' EXIT
+
+          # Login móvil estable
+          BODY_FILE="$body" U="$xui_user" P="$xui_pass" python3 -c 'import json,os; json.dump({"username":os.environ["U"],"password":os.environ["P"],"deviceId":"mobile-test-stable-001","platform":"android","deviceName":"Movil"}, open(os.environ["BODY_FILE"],"w"), separators=(",",":"))'
+          code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST "${base}/api/v1/auth/login" -H 'content-type: application/json' --data-binary @"$body")
+          echo "mobile_login=${code}"
+          token=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("accessToken") or "")' "$resp")
+          if [ -n "$token" ]; then
+            code=$(curl -sS -o "$resp" -w '%{http_code}' "${base}/api/v1/devices" -H "authorization: Bearer ${token}")
+            echo "devices_http=${code}"
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("used=%s limit=%s items=%s"%(d.get("used"), d.get("limit"), len(d.get("items") or [])));
+[print(" item", i.get("platform"), i.get("deviceName"), "current="+str(i.get("current"))) for i in (d.get("items") or [])]' "$resp"
+            code=$(curl -sS -o "$resp" -w '%{http_code}' "${base}/api/v1/account/subscription" -H "authorization: Bearer ${token}")
+            echo "sub_http=${code}"
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("maxConnections=%s activeConnections=%s"%(d.get("maxConnections"), d.get("activeConnections")))' "$resp"
+          else
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("mobile_err", d.get("code"), d.get("message"), d.get("details"))' "$resp"
+          fi
+
+          # Login TV nuevo
+          BODY_FILE="$body" U="$xui_user" P="$xui_pass" python3 -c 'import json,os; json.dump({"username":os.environ["U"],"password":os.environ["P"],"deviceId":"tv-diag-living-01","platform":"tv","deviceName":"TV Sala"}, open(os.environ["BODY_FILE"],"w"), separators=(",",":"))'
+          code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST "${base}/api/v1/auth/login" -H 'content-type: application/json' --data-binary @"$body")
+          echo "tv_login=${code}"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1]));
+print("tv_code", d.get("code") or d.get("type"), d.get("message"), d.get("details"))' "$resp"
+
+          # Login TV con deviceId corto (bug típico de app)
+          BODY_FILE="$body" U="$xui_user" P="$xui_pass" python3 -c 'import json,os; json.dump({"username":os.environ["U"],"password":os.environ["P"],"deviceId":"tv1","platform":"tv"}, open(os.environ["BODY_FILE"],"w"), separators=(",",":"))'
+          code=$(curl -sS -o "$resp" -w '%{http_code}' -X POST "${base}/api/v1/auth/login" -H 'content-type: application/json' --data-binary @"$body")
+          echo "tv_short_id_login=${code}"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("tv_short", d.get("code"), d.get("details"))' "$resp"
