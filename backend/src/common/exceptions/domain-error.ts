@@ -51,6 +51,5 @@ export const PublicMessages = {
   internal: 'No se pudo completar la operación.',
   mfaAlreadyEnabled: 'La verificación en dos pasos ya está activa.',
   databaseUnavailable: 'La base de datos no está disponible.',
-  deviceLimit:
-    'Se alcanzó el límite de dispositivos para esta cuenta. Revoca uno para continuar.',
+  deviceLimit: 'Se alcanzó el límite de dispositivos para esta cuenta. Revoca uno para continuar.',
 } as const;

@@ -326,13 +326,7 @@ export class PrismaIdentityStore
               deviceName: input.deviceName?.trim().slice(0, 80) || existing.deviceName,
             },
           });
-          await enforceDeviceQuotaInTx(
-            tx,
-            input.userId,
-            input.maxDevices,
-            input.now,
-            existing.id,
-          );
+          await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, existing.id);
           return existing.id;
         }
 

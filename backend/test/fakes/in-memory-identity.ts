@@ -198,7 +198,9 @@ export class InMemoryIdentity
   }
 
   async claimDeviceSlot(input: DeviceRegistrationInput): Promise<string> {
-    const hash = createHash('sha256').update(input.clientDeviceId.trim().toLowerCase()).digest('hex');
+    const hash = createHash('sha256')
+      .update(input.clientDeviceId.trim().toLowerCase())
+      .digest('hex');
     const existing = this.devices.find(
       (device) => device.userId === input.userId && device.deviceIdentifierHash === hash,
     );
