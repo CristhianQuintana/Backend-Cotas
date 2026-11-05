@@ -39,13 +39,16 @@ export class GetSubscriptionUseCase {
         await this.lines.saveLineSnapshot(user.id, snapshot, now);
         await this.lines.enforceDeviceQuota(user.id, line.maxConnections, now, user.deviceId);
         const devices = await this.lines.listDevices(user.id, user.deviceId);
+        const maxDevices = devices.limit ?? line.maxConnections;
         return {
           ...snapshot,
           username: line.username ?? credentials.username,
           lastVerifiedAt: now.toISOString(),
           source: 'live',
+          maxDevices,
+          activeDevices: devices.used,
           devicesUsed: devices.used,
-          devicesLimit: devices.limit,
+          devicesLimit: maxDevices,
         };
       }
     } catch (error) {
@@ -61,10 +64,13 @@ export class GetSubscriptionUseCase {
       throw new DomainError(ErrorCodes.unauthorized, 401, PublicMessages.unauthorized);
     }
     const devices = await this.lines.listDevices(user.id, user.deviceId);
+    const maxDevices = devices.limit ?? cached.maxConnections;
     return {
       ...cached,
+      maxDevices,
+      activeDevices: devices.used,
       devicesUsed: devices.used,
-      devicesLimit: devices.limit ?? cached.maxConnections,
+      devicesLimit: maxDevices,
     };
   }
 }

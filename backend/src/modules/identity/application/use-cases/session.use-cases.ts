@@ -6,13 +6,15 @@ import {
   PublicMessages,
 } from '../../../../common/exceptions/domain-error';
 import { CLOCK, type Clock } from '../../../../common/utils/clock';
+import type { AuthenticatedUser } from '../../domain/models/authenticated-user';
 import {
+  LINE_ACCESS,
   SESSION_REPOSITORY,
   USER_REPOSITORY,
+  type LineAccess,
   type SessionRepository,
   type UserRepository,
 } from '../../domain/ports/identity.ports';
-import type { AuthenticatedUser } from '../../domain/models/authenticated-user';
 
 @Injectable()
 export class LogoutUseCase {
@@ -43,13 +45,25 @@ export class LogoutUseCase {
 
 @Injectable()
 export class GetProfileUseCase {
-  constructor(@Inject(USER_REPOSITORY) private readonly users: UserRepository) {}
+  constructor(
+    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+  ) {}
 
   async execute(user: AuthenticatedUser) {
     const record = await this.users.findById(user.id);
     if (!record || record.status !== 'ACTIVE') {
       throw new DomainError(ErrorCodes.unauthorized, 401, PublicMessages.unauthorized);
     }
+
+    const [snapshot, devices] = await Promise.all([
+      this.lines.getSubscriptionSnapshot(user.id),
+      this.lines.listDevices(user.id, user.deviceId),
+    ]);
+
+    const maxDevices = devices.limit ?? snapshot?.maxConnections ?? null;
+    const connectedSessions = devices.used;
+
     return {
       id: record.id,
       username: record.username,
@@ -57,7 +71,11 @@ export class GetProfileUseCase {
       role: record.role,
       roles: record.roles,
       status: record.status,
+      accountStatus: record.status,
       mfaEnabled: record.mfaEnabled,
+      expiresAt: snapshot?.expiresAt ?? null,
+      maxDevices: maxDevices === null ? null : Number(maxDevices),
+      connectedSessions: Number(connectedSessions),
     };
   }
 }

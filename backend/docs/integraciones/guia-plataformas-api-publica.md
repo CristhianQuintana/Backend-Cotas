@@ -57,8 +57,8 @@ Respuesta típica: `accessToken`, `refreshToken`, `expiresIn`, `tokenType`.
 Authorization: Bearer <accessToken>
 ```
 
-También: `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `GET /devices` (`used`/`limit`/`items` para “x/y dispositivos”), `DELETE /devices/{id}`.  
-Ante `401`: renovar o re-login. Ante `403` `DEVICE_LIMIT`: pedir al usuario que revoque un aparato. No loguear tokens ni contraseñas.
+También: `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me` (`connectedSessions`/`maxDevices` → `x/y` del perfil), `GET /devices` (`used`/`limit`/`items`), `DELETE /devices/{id}`.  
+Ante `401` en `/devices` o `/me`: renovar token o re-login (Bearer obligatorio). Cupo lleno + `deviceId` nuevo: el backend desplaza el aparato menos reciente. No loguear tokens ni contraseñas.
 
 ---
 

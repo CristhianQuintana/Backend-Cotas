@@ -46,7 +46,17 @@ El cupo es `maxConnections` de XUI, aplicado sobre la tabla `devices` de COTAS (
 
 Personal del panel (admin/operador con contraseña local) **no** usa cupo ni exige `deviceId`.
 
-**UI:** el contador `x/y` debe usar `GET /devices` (`used`/`limit`) o `devicesUsed`/`devicesLimit` de suscripción — **no** `activeConnections` (eso es reproducción XUI y puede mostrar `0/3` con el cupo de apps lleno).
+**UI (Flutter / TV):** el contador `x/y` del perfil debe leer:
+
+| Endpoint | Campos |
+| --- | --- |
+| `GET /auth/me` | `connectedSessions` / `maxDevices` (**obligatorio** para la app) |
+| `GET /account/subscription` | `activeDevices` / `maxDevices` |
+| `GET /devices` | `used` / `limit` + listado para cerrar remotos |
+
+**No** usar `activeConnections` / `maxConnections` de XUI (streams) para ese texto.
+
+Si el cupo está lleno y entra un **nuevo** `deviceId`, el backend **desplaza** el aparato con `lastSeenAt` más antiguo (cierra sus sesiones) para no dejar la cuenta bloqueada por logins abandonados.
 
 ### Listar / revocar dispositivos
 
@@ -89,7 +99,27 @@ Solo aparecen dispositivos `ACTIVE`. `limit` sale del snapshot de suscripción (
 GET /api/v1/auth/me
 ```
 
-Incluye `displayName` (nombre visible COTAS, rellenado desde XUI al verificar la línea). El correo queda fuera de esta entrega.
+```json
+{
+  "id": "…",
+  "username": "prueba.linea",
+  "displayName": "Cliente Prueba",
+  "role": "CUSTOMER",
+  "status": "ACTIVE",
+  "accountStatus": "ACTIVE",
+  "mfaEnabled": false,
+  "expiresAt": "2026-12-31T23:59:59.000Z",
+  "maxDevices": 3,
+  "connectedSessions": 1
+}
+```
+
+| Campo | Uso |
+| --- | --- |
+| `maxDevices` | Máximo de aparatos con sesión (entero; puede ser `null` si aún no hay snapshot) |
+| `connectedSessions` | Aparatos ACTIVE con sesión viva ahora → pintar `connectedSessions / maxDevices` |
+
+`GET /devices` requiere Bearer válido (401 sin token o sesión revocada).
 
 ## Suscripción / línea IPTV
 
@@ -108,8 +138,8 @@ Al responder, el backend intenta refrescar el estado en XUI (`player_api` / `use
   "expiresAt": "2026-12-31T23:59:59.000Z",
   "maxConnections": 3,
   "activeConnections": 1,
-  "devicesUsed": 1,
-  "devicesLimit": 3,
+  "maxDevices": 3,
+  "activeDevices": 1,
   "status": "Active",
   "lastVerifiedAt": "2026-11-02T19:00:00.000Z",
   "source": "live"
@@ -118,9 +148,9 @@ Al responder, el backend intenta refrescar el estado en XUI (`player_api` / `use
 
 | Campo | Significado |
 | --- | --- |
-| `maxConnections` | Cupo de **dispositivos de app** en COTAS (mismo valor que XUI); al bajar, se evictan los más viejos |
-| `devicesUsed` / `devicesLimit` | Contador `x/y` de aparatos COTAS (mismo criterio que `GET /devices`) |
-| `activeConnections` | Streams abiertos en XUI (informativo; **no** usar para “dispositivos de app”) |
+| `maxDevices` / `activeDevices` | Contador de **aparatos con sesión** (usar en perfil si no se lee `/auth/me`) |
+| `maxConnections` | Tope XUI (mismo número que `maxDevices` en la práctica) |
+| `activeConnections` | Streams abiertos en XUI (**no** usar para `x/y` del perfil) |
 | `expiresAt` | Vencimiento de la línea (`exp_date`); `null` si XUI no informa |
 | `source` | `live` = recién consultado a XUI; `cache` = degradación |
 

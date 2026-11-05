@@ -42,6 +42,10 @@ jobs:
           echo "active_before=${before}"
 
           docker compose exec -T postgres psql -U cotas -d cotas_dev -v ON_ERROR_STOP=1 -c \
+            "UPDATE user_sessions s SET revoked_at=NOW(), revoke_reason='SECURITY'
+             FROM iptv_accounts a
+             WHERE a.user_id=s.user_id AND a.username='${xui_user}' AND s.revoked_at IS NULL;"
+          docker compose exec -T postgres psql -U cotas -d cotas_dev -v ON_ERROR_STOP=1 -c \
             "UPDATE devices d SET status='REVOKED', revoked_at=NOW() FROM iptv_accounts a WHERE a.user_id=d.user_id AND a.username='${xui_user}' AND d.status='ACTIVE';"
 
           after=$(docker compose exec -T postgres psql -U cotas -d cotas_dev -Atc \

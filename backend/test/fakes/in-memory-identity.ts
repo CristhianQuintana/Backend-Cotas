@@ -206,15 +206,8 @@ export class InMemoryIdentity
     );
     this.revokeOrphansInMemory(input.userId, input.now, existing?.id ?? null);
     if (existing) {
-      if (existing.status !== 'ACTIVE') {
-        this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
-        if (
-          input.maxDevices !== null &&
-          this.devices.filter((d) => d.userId === input.userId && d.status === 'ACTIVE').length >=
-            input.maxDevices
-        ) {
-          throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
-        }
+      if (existing.status !== 'ACTIVE' && input.maxDevices !== null && input.maxDevices >= 1) {
+        this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
       }
       existing.status = 'ACTIVE';
       existing.revokedAt = null;
@@ -224,13 +217,8 @@ export class InMemoryIdentity
       this.enforceInMemory(input.userId, input.maxDevices, input.now, existing.id);
       return existing.id;
     }
-    this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
-    if (
-      input.maxDevices !== null &&
-      this.devices.filter((d) => d.userId === input.userId && d.status === 'ACTIVE').length >=
-        input.maxDevices
-    ) {
-      throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit);
+    if (input.maxDevices !== null && input.maxDevices >= 1) {
+      this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
     }
     const created: MemoryDevice = {
       id: newId(),
@@ -317,7 +305,16 @@ export class InMemoryIdentity
     audit: AuditDraft,
     options?: { deviceId?: string | null },
   ): Promise<void> {
-    this.sessions.push({ ...session, deviceId: options?.deviceId ?? session.deviceId ?? null });
+    const deviceId = options?.deviceId ?? session.deviceId ?? null;
+    if (deviceId) {
+      for (const item of this.sessions) {
+        if (item.deviceId === deviceId && item.userId === session.userId && !item.revokedAt) {
+          item.revokedAt = session.createdAt;
+          item.revocationReason = 'SECURITY';
+        }
+      }
+    }
+    this.sessions.push({ ...session, deviceId });
     this.pushAudit(audit, session.userId);
   }
 
@@ -485,9 +482,10 @@ export class InMemoryIdentity
     now: Date,
     keepDeviceId: string | null,
   ): number {
-    if (maxDevices === null || maxDevices < 1) {
+    if (maxDevices === null) {
       return 0;
     }
+    const limit = Math.max(0, Math.trunc(maxDevices));
     const active = this.devices
       .filter((device) => device.userId === userId && device.status === 'ACTIVE')
       .sort(
@@ -495,15 +493,15 @@ export class InMemoryIdentity
           (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0) ||
           b.createdAt.getTime() - a.createdAt.getTime(),
       );
-    if (active.length <= maxDevices) {
+    if (active.length <= limit) {
       return 0;
     }
     const keep = new Set<string>();
-    if (keepDeviceId) {
+    if (keepDeviceId && limit > 0) {
       keep.add(keepDeviceId);
     }
     for (const row of active) {
-      if (keep.size >= maxDevices) {
+      if (keep.size >= limit) {
         break;
       }
       keep.add(row.id);

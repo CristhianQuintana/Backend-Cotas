@@ -127,9 +127,15 @@ export interface SubscriptionSnapshot {
   maxConnections: number | null;
   /** Conexiones de reproducción en XUI (no es el cupo de apps COTAS). */
   activeConnections: number | null;
-  /** Dispositivos de app ACTIVE en COTAS (`GET /devices` → used). */
+  /**
+   * Cupo de aparatos con sesión (Flutter: `maxDevices` / `activeDevices`).
+   * Alias de devicesLimit / devicesUsed.
+   */
+  maxDevices?: number | null;
+  activeDevices?: number;
+  /** @deprecated Preferir activeDevices / connectedSessions en /auth/me. */
   devicesUsed?: number;
-  /** Igual que maxConnections / `GET /devices` → limit. */
+  /** @deprecated Preferir maxDevices. */
   devicesLimit?: number | null;
   status: string | null;
   lastVerifiedAt: string | null;

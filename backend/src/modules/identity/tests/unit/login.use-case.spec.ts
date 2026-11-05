@@ -136,7 +136,7 @@ describe('identidad', () => {
     expect(identity.users.find((user) => user.username === 'linea.nueva')?.role).toBe('CUSTOMER');
   });
 
-  it('acepta login IPTV sin deviceId (compat) y respeta el cupo maxConnections', async () => {
+  it('acepta login IPTV sin deviceId (compat) y desplaza el aparato más viejo si el cupo está lleno', async () => {
     const { identity, login, xui } = setup();
     xui.line.maxConnections = 2;
     xui.lines.set('viewer.demo', 'correct-horse-battery');
@@ -162,15 +162,16 @@ describe('identidad', () => {
       platform: 'tv',
       meta,
     });
-    await expect(
-      login.execute({
-        username: 'viewer.demo',
-        password: 'correct-horse-battery',
-        deviceId: deviceC,
-        platform: 'ios',
-        meta,
-      }),
-    ).rejects.toThrow(PublicMessages.deviceLimit);
+    // 3.er aparato distinto: libera el menos reciente y entra (no bloquea TV/móvil).
+    const third = await login.execute({
+      username: 'viewer.demo',
+      password: 'correct-horse-battery',
+      deviceId: deviceC,
+      platform: 'ios',
+      meta,
+    });
+    expect(third.type).toBe('authenticated');
+    expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(2);
 
     // Re-login del mismo aparato no consume un slot extra.
     const again = await login.execute({

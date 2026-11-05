@@ -307,19 +307,15 @@ export class PrismaIdentityStore
         // Libera slots “fantasma”: ACTIVE sin sesión viva (logout/expiración sin liberar el cupo).
         await revokeOrphanDevicesInTx(tx, input.userId, input.now, existing?.id ?? null);
         if (existing) {
-          if (existing.status !== 'ACTIVE') {
-            await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, null);
-            if (input.maxDevices !== null) {
-              const active = await tx.device.count({
-                where: { userId: input.userId, status: 'ACTIVE' },
-              });
-              if (active >= input.maxDevices) {
-                throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
-                  { field: 'used', rules: [String(active)] },
-                  { field: 'limit', rules: [String(input.maxDevices)] },
-                ]);
-              }
-            }
+          if (existing.status !== 'ACTIVE' && input.maxDevices !== null && input.maxDevices >= 1) {
+            // Reactivar aparato previo: deja hueco si el cupo está lleno.
+            await enforceDeviceQuotaInTx(
+              tx,
+              input.userId,
+              Math.max(input.maxDevices - 1, 0),
+              input.now,
+              null,
+            );
           }
           await tx.device.update({
             where: { id: existing.id },
@@ -335,17 +331,16 @@ export class PrismaIdentityStore
           return existing.id;
         }
 
-        await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, null);
-        if (input.maxDevices !== null) {
-          const active = await tx.device.count({
-            where: { userId: input.userId, status: 'ACTIVE' },
-          });
-          if (active >= input.maxDevices) {
-            throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
-              { field: 'used', rules: [String(active)] },
-              { field: 'limit', rules: [String(input.maxDevices)] },
-            ]);
-          }
+        // Cupo lleno + aparato nuevo → desplaza el menos reciente (libera 1 slot).
+        // Así TV/móvil no quedan bloqueados por sesiones abandonadas sin logout.
+        if (input.maxDevices !== null && input.maxDevices >= 1) {
+          await enforceDeviceQuotaInTx(
+            tx,
+            input.userId,
+            Math.max(input.maxDevices - 1, 0),
+            input.now,
+            null,
+          );
         }
 
         const created = await tx.device.create({
@@ -423,6 +418,13 @@ export class PrismaIdentityStore
         const deviceId =
           options?.deviceId ??
           (await touchDevice(tx, session.userId, session.userAgent, session.createdAt));
+        // Mismo deviceId → una sola sesión viva (re-login reemplaza tokens).
+        if (deviceId) {
+          await tx.userSession.updateMany({
+            where: { deviceId, userId: session.userId, revokedAt: null },
+            data: { revokedAt: session.createdAt, revokeReason: 'SECURITY' },
+          });
+        }
         await tx.userSession.create({
           data: toSessionData(session, { deviceId, ipAddress: audit.ipAddress }),
         });
@@ -928,22 +930,23 @@ async function enforceDeviceQuotaInTx(
   now: Date,
   keepDeviceId: string | null,
 ): Promise<number> {
-  if (maxDevices === null || maxDevices < 1) {
+  if (maxDevices === null) {
     return 0;
   }
+  const limit = Math.max(0, Math.trunc(maxDevices));
   const active = await tx.device.findMany({
     where: { userId, status: 'ACTIVE' },
     orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }],
   });
-  if (active.length <= maxDevices) {
+  if (active.length <= limit) {
     return 0;
   }
   const keep = new Set<string>();
-  if (keepDeviceId) {
+  if (keepDeviceId && limit > 0) {
     keep.add(keepDeviceId);
   }
   for (const row of active) {
-    if (keep.size >= maxDevices) {
+    if (keep.size >= limit) {
       break;
     }
     keep.add(row.id);
