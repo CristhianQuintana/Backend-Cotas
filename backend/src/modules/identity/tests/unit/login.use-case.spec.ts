@@ -136,7 +136,7 @@ describe('identidad', () => {
     expect(identity.users.find((user) => user.username === 'linea.nueva')?.role).toBe('CUSTOMER');
   });
 
-  it('exige deviceId en login de línea IPTV y respeta el cupo maxConnections', async () => {
+  it('acepta login IPTV sin deviceId (compat) y respeta el cupo maxConnections', async () => {
     const { identity, login, xui } = setup();
     xui.line.maxConnections = 2;
     xui.lines.set('viewer.demo', 'correct-horse-battery');
@@ -148,17 +148,13 @@ describe('identidad', () => {
       mfaSecretCiphertext: null,
     });
 
-    await expect(
-      login.execute({ username: 'viewer.demo', password: 'correct-horse-battery', meta }),
-    ).rejects.toBeInstanceOf(DomainError);
-
-    await login.execute({
+    const legacy = await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
-      deviceId: deviceA,
-      platform: 'android',
       meta,
     });
+    expect(legacy.type).toBe('authenticated');
+
     await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
@@ -180,8 +176,8 @@ describe('identidad', () => {
     const again = await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
-      deviceId: deviceA,
-      platform: 'android',
+      deviceId: deviceB,
+      platform: 'tv',
       meta,
     });
     expect(again.type).toBe('authenticated');

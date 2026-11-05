@@ -114,17 +114,15 @@ export class LoginUseCase {
       return this.failLogin(command.meta, accepted.user.id, 'staff_via_xui');
     }
 
-    const clientDeviceId = command.deviceId?.trim();
-    if (!clientDeviceId) {
-      throw new DomainError(ErrorCodes.validation, 400, PublicMessages.validation, [
-        { field: 'deviceId', rules: ['required'] },
-      ]);
-    }
+    // Compat: apps que aún no envían deviceId siguen entrando con huella de User-Agent.
+    const clientDeviceId =
+      command.deviceId?.trim() ||
+      `ua:${(command.meta.userAgent ?? 'web').trim().toLowerCase().slice(0, 160) || 'web'}`;
 
     const deviceId = await this.lines.claimDeviceSlot({
       userId: accepted.user.id,
       clientDeviceId,
-      platform: mapPlatform(command.platform),
+      platform: mapPlatform(command.platform, command.meta.userAgent),
       deviceName: command.deviceName ?? null,
       maxDevices: line.maxConnections,
       now: this.clock.now(),
@@ -196,17 +194,29 @@ export class LoginUseCase {
   }
 }
 
-function mapPlatform(value: string | undefined): DevicePlatformCode {
-  switch ((value ?? '').toLowerCase()) {
-    case 'android':
-      return 'ANDROID';
-    case 'ios':
-      return 'IOS';
-    case 'tv':
-      return 'TV';
-    case 'web':
-      return 'WEB';
-    default:
-      return 'OTHER';
+function mapPlatform(value: string | undefined, userAgent?: string | null): DevicePlatformCode {
+  const raw = (value ?? userAgent ?? '').toLowerCase();
+  if (raw.includes('android')) {
+    return 'ANDROID';
   }
+  if (raw.includes('iphone') || raw.includes('ipad') || raw === 'ios') {
+    return 'IOS';
+  }
+  if (
+    raw.includes('tv') ||
+    raw.includes('tizen') ||
+    raw.includes('webos') ||
+    raw.includes('bravia')
+  ) {
+    return 'TV';
+  }
+  if (
+    raw.includes('mozilla') ||
+    raw === 'web' ||
+    raw.includes('chrome') ||
+    raw.includes('safari')
+  ) {
+    return 'WEB';
+  }
+  return 'OTHER';
 }

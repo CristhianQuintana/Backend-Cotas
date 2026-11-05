@@ -51,7 +51,7 @@ Content-Type: application/json
 ```
 
 Respuesta típica: `accessToken`, `refreshToken`, `expiresIn`, `tokenType`.  
-`deviceId` es obligatorio en apps IPTV (UUID persistido). Cupo = `maxConnections`; detalle en `docs/integraciones/cuenta-y-notificaciones.md`.
+`deviceId` estable es **recomendado** (UUID o id de instalación). Si falta, el login sigue funcionando con huella de User-Agent. Cupo = `maxConnections`; detalle en `docs/integraciones/cuenta-y-notificaciones.md`.
 
 ```http
 Authorization: Bearer <accessToken>

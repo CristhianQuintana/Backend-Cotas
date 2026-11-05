@@ -14,7 +14,7 @@ Base URL de producción: `https://api.cotasperu.com/api/v1`.
 
 ### Login de apps IPTV (cupo de dispositivos)
 
-Las apps de cliente **deben** enviar un `deviceId` estable (UUID v4 persistido en el aparato):
+Las apps **deberían** enviar un `deviceId` estable (UUID o id de instalación persistido). Si aún no lo envían, el backend usa el `User-Agent` como huella temporal (compatibilidad).
 
 ```http
 POST /api/v1/auth/login
@@ -31,8 +31,8 @@ Content-Type: application/json
 
 | Campo | Obligatorio | Notas |
 | --- | --- | --- |
-| `deviceId` | Sí (línea IPTV) | UUID estable por instalación; no regenerar en cada arranque |
-| `platform` | No | `android` \| `ios` \| `tv` \| `web` \| `other` |
+| `deviceId` | Recomendado | 8–128 chars (`A-Za-z0-9._:-`); no regenerar en cada arranque |
+| `platform` | No | Texto libre corto; se normaliza a ANDROID/IOS/TV/WEB/OTHER |
 | `deviceName` | No | Etiqueta visible (máx. 80) |
 
 El cupo es `maxConnections` de XUI, aplicado sobre la tabla `devices` de COTAS (no sobre `active_cons` de XUI):
