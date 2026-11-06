@@ -6,24 +6,25 @@ import type {
   RotateResult,
   SessionRecord,
 } from '../../src/modules/identity/domain/models/session';
-import type {
-  AcceptLineInput,
-  AcceptLineResult,
-  ApproveDeviceLinkChallengeInput,
-  CreateDeviceLinkChallengeInput,
-  CreateLocalUserInput,
-  DeviceLinkChallengeRecord,
-  DeviceLinkRepository,
-  DeviceQuotaView,
-  DeviceRegistrationInput,
-  LineAccess,
-  LineCredentials,
-  LineSnapshotInput,
-  RecoveryCodeRepository,
-  SessionRepository,
-  SubscriptionSnapshot,
-  UpdateLocalUserInput,
-  UserRepository,
+import {
+  DEVICE_INACTIVE_AFTER_SECONDS,
+  type AcceptLineInput,
+  type AcceptLineResult,
+  type ApproveDeviceLinkChallengeInput,
+  type CreateDeviceLinkChallengeInput,
+  type CreateLocalUserInput,
+  type DeviceLinkChallengeRecord,
+  type DeviceLinkRepository,
+  type DeviceQuotaView,
+  type DeviceRegistrationInput,
+  type LineAccess,
+  type LineCredentials,
+  type LineSnapshotInput,
+  type RecoveryCodeRepository,
+  type SessionRepository,
+  type SubscriptionSnapshot,
+  type UpdateLocalUserInput,
+  type UserRepository,
 } from '../../src/modules/identity/domain/ports/identity.ports';
 import type { AuditRepository } from '../../src/modules/audit/domain/audit-repository';
 import { DomainError, ErrorCodes, PublicMessages } from '../../src/common/exceptions/domain-error';
@@ -42,6 +43,7 @@ type MemoryDevice = {
   createdAt: Date;
   revokedAt: Date | null;
   pushToken: string | null;
+  inactiveNotifiedAt: Date | null;
 };
 
 export class InMemoryIdentity
@@ -255,6 +257,7 @@ export class InMemoryIdentity
       existing.status = 'ACTIVE';
       existing.revokedAt = null;
       existing.lastSeenAt = input.now;
+      existing.inactiveNotifiedAt = null;
       existing.platform = input.platform;
       existing.deviceName = input.deviceName?.trim().slice(0, 80) || existing.deviceName;
       this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
@@ -294,13 +297,16 @@ export class InMemoryIdentity
       createdAt: input.now,
       revokedAt: null,
       pushToken: null,
+      inactiveNotifiedAt: null,
     };
     this.devices.push(created);
     return created.id;
   }
 
   async listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView> {
-    this.revokeOrphansInMemory(userId, this.nowProvider(), currentDeviceId);
+    const now = this.nowProvider();
+    this.revokeOrphansInMemory(userId, now, currentDeviceId);
+    const inactiveAfterMs = DEVICE_INACTIVE_AFTER_SECONDS * 1000;
     const items = this.devices
       .filter((device) => device.userId === userId && device.status === 'ACTIVE')
       .sort(
@@ -313,6 +319,10 @@ export class InMemoryIdentity
         platform: device.platform,
         deviceName: device.deviceName,
         status: device.status,
+        presence:
+          !device.lastSeenAt || now.getTime() - device.lastSeenAt.getTime() >= inactiveAfterMs
+            ? ('inactive' as const)
+            : ('online' as const),
         lastSeenAt: device.lastSeenAt?.toISOString() ?? null,
         createdAt: device.createdAt.toISOString(),
         current: currentDeviceId !== null && device.id === currentDeviceId,
@@ -321,8 +331,51 @@ export class InMemoryIdentity
     return {
       used: items.length,
       limit: snapshot?.maxConnections ?? null,
+      inactiveAfterSeconds: DEVICE_INACTIVE_AFTER_SECONDS,
       items,
     };
+  }
+
+  async touchDevicePresence(
+    userId: string,
+    deviceId: string,
+    now: Date,
+  ): Promise<'ok' | 'not_found'> {
+    const device = this.devices.find(
+      (item) => item.id === deviceId && item.userId === userId && item.status === 'ACTIVE',
+    );
+    if (!device) {
+      return 'not_found';
+    }
+    device.lastSeenAt = now;
+    device.inactiveNotifiedAt = null;
+    return 'ok';
+  }
+
+  async claimNewlyInactiveDevices(
+    now: Date,
+    limit = 50,
+  ): Promise<Array<{ userId: string; deviceId: string; deviceName: string | null }>> {
+    const threshold = now.getTime() - DEVICE_INACTIVE_AFTER_SECONDS * 1000;
+    const claimed: Array<{ userId: string; deviceId: string; deviceName: string | null }> = [];
+    for (const device of this.devices) {
+      if (claimed.length >= limit) {
+        break;
+      }
+      if (device.status !== 'ACTIVE' || device.inactiveNotifiedAt) {
+        continue;
+      }
+      if (device.lastSeenAt && device.lastSeenAt.getTime() >= threshold) {
+        continue;
+      }
+      device.inactiveNotifiedAt = now;
+      claimed.push({
+        userId: device.userId,
+        deviceId: device.id,
+        deviceName: device.deviceName,
+      });
+    }
+    return claimed;
   }
 
   async revokeDevice(

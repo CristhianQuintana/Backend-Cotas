@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { IsIn, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
@@ -43,6 +43,22 @@ export class DevicesController {
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.lines.listDevices(user.id, user.deviceId);
+  }
+
+  /**
+   * App en primer plano: marca este aparato como online.
+   * TV/móvil deben llamar cada ~60 s mientras la app esté en uso.
+   */
+  @Post('heartbeat')
+  @HttpCode(204)
+  async heartbeat(@CurrentUser() user: AuthenticatedUser): Promise<void> {
+    if (!user.deviceId) {
+      throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+    }
+    const result = await this.lines.touchDevicePresence(user.id, user.deviceId, this.clock.now());
+    if (result === 'not_found') {
+      throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+    }
   }
 
   @Put('push-token')

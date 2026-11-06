@@ -194,6 +194,8 @@ model Device {
   pushPlatform         String?        @map("push_platform") @db.VarChar(32)
   status               DeviceStatus   @default(ACTIVE)
   lastSeenAt           DateTime?      @map("last_seen_at") @db.Timestamptz(3)
+  /** Última vez que se envió push de inactividad (null = aún no notificado o volvió a online). */
+  inactiveNotifiedAt   DateTime?      @map("inactive_notified_at") @db.Timestamptz(3)
   createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   revokedAt            DateTime?      @map("revoked_at") @db.Timestamptz(3)
 
@@ -203,6 +205,7 @@ model Device {
   @@unique([userId, deviceIdentifierHash])
   @@index([userId, status])
   @@index([pushToken])
+  @@index([status, lastSeenAt])
   @@map("devices")
 }
 

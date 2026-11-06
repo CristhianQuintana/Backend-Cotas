@@ -152,12 +152,14 @@ Authorization: Bearer <accessToken>
 {
   "used": 2,
   "limit": 3,
+  "inactiveAfterSeconds": 300,
   "items": [
     {
       "id": "…",
       "platform": "ANDROID",
       "deviceName": "Mi celular",
       "status": "ACTIVE",
+      "presence": "online",
       "lastSeenAt": "2026-11-05T17:55:00.000Z",
       "createdAt": "2026-11-01T10:00:00.000Z",
       "current": true
@@ -167,7 +169,8 @@ Authorization: Bearer <accessToken>
       "platform": "TV",
       "deviceName": "cuarto02",
       "status": "ACTIVE",
-      "lastSeenAt": "2026-11-05T18:00:00.000Z",
+      "presence": "inactive",
+      "lastSeenAt": "2026-11-05T17:40:00.000Z",
       "createdAt": "2026-11-05T18:00:00.000Z",
       "current": false
     }
@@ -180,10 +183,13 @@ Authorization: Bearer <accessToken>
 | Título `x / y` | `used` / `limit` |
 | Nombre | `deviceName` |
 | Tipo | `platform` (`TV`, `ANDROID`, `IOS`, …) |
+| Estado de uso | `presence`: `online` (en uso) / `inactive` (logueado pero sin uso reciente) |
 | Registrado | `createdAt` |
 | Última conexión | `lastSeenAt` |
 | “Este dispositivo” | `current === true` |
 | Acción “Cerrar sesión” | visible si `current === false` (o también en el actual con confirmación) |
+
+**Importante:** `inactive` ≠ logout. El aparato **sigue en la lista**. Logout → desaparece + push `device_session_closed`.
 
 **401:** token inválido/expirado — no es “falta el endpoint”. Renovar Bearer.
 
@@ -226,6 +232,34 @@ Cuando un televisor hace `POST /auth/logout` (o se revoca su sesión):
 3. Al recibir el push (o al volver la app al primer plano): **refrescar** `GET /devices` y el contador `GET /auth/me`.
 
 Sin push, la lista solo se actualiza al refrescar (pull-to-refresh / onResume). No hay WebSocket de presencia.
+
+### 4.5 Presencia: online vs inactivo (sigue vinculado)
+
+| Concepto | Qué pasa en la lista | Push en campanita |
+| --- | --- | --- |
+| **Sesión cerrada** (logout / DELETE) | **Desaparece** del listado | `device_session_closed` — “Se cerró la sesión en X…” |
+| **Inactivo** (app/TV sin uso ≥ 5 min) | **Sigue** en la lista con `presence: "inactive"` | `device_inactive` — “X está inactivo.” |
+
+**Heartbeat (obligatorio en TV y móvil mientras la app está en uso):**
+
+```http
+POST /api/v1/devices/heartbeat
+Authorization: Bearer <accessToken>
+```
+
+→ `204`. Llamar cada **~60 s** en foreground (y al volver a primer plano). Sin heartbeat, tras `inactiveAfterSeconds` (300) el aparato pasa a `inactive`.
+
+**Push `device_inactive` (FCM):**
+
+| Campo | Valor |
+| --- | --- |
+| `data.type` | `device_inactive` |
+| `data.deviceId` | id del aparato inactivo |
+| `data.deviceName` | nombre visible |
+| Título | `Dispositivo inactivo` |
+| Cuerpo | `<nombre> está inactivo.` |
+
+Al recibirlo: refrescar `GET /devices` y mostrar en campanita. **No** quitar el ítem de la lista (solo marcar inactivo). Cuando ese aparato vuelva a hacer heartbeat, `presence` vuelve a `online`.
 
 ---
 

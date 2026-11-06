@@ -85,12 +85,14 @@ DELETE /api/v1/devices/{id}
 {
   "used": 3,
   "limit": 5,
+  "inactiveAfterSeconds": 300,
   "items": [
     {
       "id": "...",
       "platform": "ANDROID",
       "deviceName": "Living TV",
       "status": "ACTIVE",
+      "presence": "online",
       "lastSeenAt": "2026-11-05T14:00:00.000Z",
       "createdAt": "2026-11-01T10:00:00.000Z",
       "current": true
@@ -103,7 +105,10 @@ DELETE /api/v1/devices/{id}
 | --- | --- |
 | `used` / `limit` | Texto `used/limit` (p. ej. `3/5`). Si `limit` es `null`, mostrar solo `used` o “sin cupo” |
 | `items[].current` | Marcar “este aparato” |
+| `items[].presence` | `online` / `inactive` (sigue vinculado; no es logout) |
+| `inactiveAfterSeconds` | Umbral servidor (300 s) |
 | `DELETE` | Revocar otro aparato (`204`); cierra sus sesiones |
+| `POST /devices/heartbeat` | App en uso: mantener `online` (cada ~60 s) |
 
 Solo aparecen dispositivos `ACTIVE`. `limit` sale del snapshot de suscripción (`maxConnections`).
 
@@ -222,17 +227,16 @@ Variables (ver `.env.example`): `FCM_ENABLED`, `FCM_PROJECT_ID`, `FCM_CLIENT_EMA
 
 Con FCM deshabilitado, la API de anuncios sigue siendo útil para la UI.
 
-### Push de sesión cerrada en otro dispositivo
+### Push de sesión cerrada / dispositivo inactivo
 
-Cuando un aparato hace `POST /auth/logout` o se revoca con `DELETE /devices/{id}`, los demás aparatos ACTIVE con `pushToken` pueden recibir:
+| Evento | `data.type` | Lista | Texto sugerido |
+| --- | --- | --- | --- |
+| Logout / `DELETE /devices/{id}` | `device_session_closed` | **Quitar** ítem | “Se cerró la sesión en &lt;nombre&gt;.” |
+| Sin heartbeat ≥ 5 min | `device_inactive` | Mantener; `presence: inactive` | “&lt;nombre&gt; está inactivo.” |
 
-| Campo | Valor |
-| --- | --- |
-| `data.type` | `device_session_closed` |
-| `data.deviceId` | id interno del aparato que salió |
-| `data.deviceName` | nombre visible (o vacío) |
+Ambos incluyen `data.deviceId` y `data.deviceName`. Refrescar `GET /devices` al recibir push y en `onResume`.
 
-La app móvil debe refrescar `GET /devices` al recibir este evento (y también en `onResume`).
+TV y móvil en foreground: `POST /devices/heartbeat` cada ~60 s.
 
 ## Recordatorios EPG (sincronización entre celulares)
 

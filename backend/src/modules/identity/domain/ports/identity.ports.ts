@@ -103,11 +103,15 @@ export interface DeviceLinkRepository {
   markExpiredIfNeeded(id: string, now: Date): Promise<DeviceLinkChallengeRecord | null>;
 }
 
+export type DevicePresenceCode = 'online' | 'inactive';
+
 export interface DeviceView {
   id: string;
   platform: DevicePlatformCode;
   deviceName: string | null;
   status: 'ACTIVE' | 'REVOKED';
+  /** online = visto hace poco; inactive = sin actividad pero con sesión (no es logout). */
+  presence: DevicePresenceCode;
   lastSeenAt: string | null;
   createdAt: string;
   current: boolean;
@@ -118,6 +122,8 @@ export interface DeviceQuotaView {
   used: number;
   /** Cupo desde snapshot XUI (`maxConnections`). null = sin tope conocido. */
   limit: number | null;
+  /** Segundos sin actividad para marcar `presence: inactive` (mismo umbral en servidor). */
+  inactiveAfterSeconds: number;
   items: DeviceView[];
 }
 
@@ -214,6 +220,16 @@ export interface LineAccess {
    */
   claimDeviceSlot(input: DeviceRegistrationInput): Promise<string>;
   listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView>;
+  /** Marca el aparato actual como online (app en uso). */
+  touchDevicePresence(userId: string, deviceId: string, now: Date): Promise<'ok' | 'not_found'>;
+  /**
+   * Aparatos ACTIVE que cruzaron el umbral de inactividad y aún no se notificó.
+   * Al devolverlos marca `inactiveNotifiedAt` para no repetir el push.
+   */
+  claimNewlyInactiveDevices(
+    now: Date,
+    limit?: number,
+  ): Promise<Array<{ userId: string; deviceId: string; deviceName: string | null }>>;
   revokeDevice(deviceId: string, userId: string, now: Date): Promise<'revoked' | 'not_found'>;
   /** Ajusta ACTIVE al cupo actual (p. ej. tras bajar max_connections en XUI). */
   enforceDeviceQuota(
@@ -223,6 +239,9 @@ export interface LineAccess {
     keepDeviceId?: string | null,
   ): Promise<number>;
 }
+
+/** Umbral de inactividad compartido (lista + push). */
+export const DEVICE_INACTIVE_AFTER_SECONDS = 5 * 60;
 
 export interface PasswordHasher {
   hash(password: string): Promise<string>;

@@ -165,6 +165,15 @@ GET /api/v1/auth/device-link/session/AB3K7N2P?deviceId=7c9e6679-7425-40de-944b-e
 
 A partir de aquí el TV usa el mismo contrato que el login tradicional: Bearer, catálogo, playback, `POST /auth/refresh`.
 
+**Heartbeat de presencia (obligatorio con sesión abierta):** cada ~60 s en primer plano:
+
+```http
+POST /api/v1/devices/heartbeat
+Authorization: Bearer <accessToken>
+```
+
+Sin heartbeat, el móvil verá el TV como `presence: "inactive"` tras 5 minutos (sigue vinculado; no es logout).
+
 ### 4.3 Si el móvil cierra el TV a distancia
 
 `DELETE /devices/{id}` desde el móvil revoca el dispositivo y sus sesiones.  

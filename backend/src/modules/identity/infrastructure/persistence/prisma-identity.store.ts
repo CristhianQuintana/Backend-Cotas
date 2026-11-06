@@ -27,9 +27,11 @@ import {
   type ApproveDeviceLinkChallengeInput,
   type CreateDeviceLinkChallengeInput,
   type CreateLocalUserInput,
+  DEVICE_INACTIVE_AFTER_SECONDS,
   type DeviceLinkChallengeRecord,
   type DeviceLinkRepository,
   type DeviceLinkStatusCode,
+  type DevicePresenceCode,
   type DeviceQuotaView,
   type DeviceRegistrationInput,
   type LineAccess,
@@ -336,6 +338,7 @@ export class PrismaIdentityStore
               status: 'ACTIVE',
               revokedAt: null,
               lastSeenAt: input.now,
+              inactiveNotifiedAt: null,
               platform: input.platform,
               deviceName: input.deviceName?.trim().slice(0, 80) || existing.deviceName,
             },
@@ -410,11 +413,13 @@ export class PrismaIdentityStore
         }),
         this.getSubscriptionSnapshot(userId),
       ]);
+      const inactiveAfterMs = DEVICE_INACTIVE_AFTER_SECONDS * 1000;
       const items = rows.map((row) => ({
         id: row.id,
         platform: row.platform,
         deviceName: row.deviceName,
         status: row.status as 'ACTIVE' | 'REVOKED',
+        presence: presenceOf(row.lastSeenAt, now, inactiveAfterMs),
         lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
         createdAt: row.createdAt.toISOString(),
         current: currentDeviceId !== null && row.id === currentDeviceId,
@@ -422,8 +427,61 @@ export class PrismaIdentityStore
       return {
         used: items.length,
         limit: snapshot?.maxConnections ?? null,
+        inactiveAfterSeconds: DEVICE_INACTIVE_AFTER_SECONDS,
         items,
       };
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async touchDevicePresence(
+    userId: string,
+    deviceId: string,
+    now: Date,
+  ): Promise<'ok' | 'not_found'> {
+    try {
+      const updated = await this.prisma.device.updateMany({
+        where: { id: deviceId, userId, status: 'ACTIVE' },
+        data: { lastSeenAt: now, inactiveNotifiedAt: null },
+      });
+      return updated.count === 1 ? 'ok' : 'not_found';
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async claimNewlyInactiveDevices(
+    now: Date,
+    limit = 50,
+  ): Promise<Array<{ userId: string; deviceId: string; deviceName: string | null }>> {
+    try {
+      const threshold = new Date(now.getTime() - DEVICE_INACTIVE_AFTER_SECONDS * 1000);
+      const candidates = await this.prisma.device.findMany({
+        where: {
+          status: 'ACTIVE',
+          inactiveNotifiedAt: null,
+          OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: threshold } }],
+        },
+        select: { id: true, userId: true, deviceName: true },
+        take: Math.max(1, Math.min(limit, 200)),
+        orderBy: { lastSeenAt: 'asc' },
+      });
+      const claimed: Array<{ userId: string; deviceId: string; deviceName: string | null }> = [];
+      for (const row of candidates) {
+        const marked = await this.prisma.device.updateMany({
+          where: { id: row.id, status: 'ACTIVE', inactiveNotifiedAt: null },
+          data: { inactiveNotifiedAt: now },
+        });
+        if (marked.count === 1) {
+          claimed.push({
+            userId: row.userId,
+            deviceId: row.id,
+            deviceName: row.deviceName,
+          });
+        }
+      }
+      return claimed;
     } catch (error) {
       bubble(error);
     }
@@ -1145,6 +1203,17 @@ async function enforceDeviceQuotaInTx(
     });
   }
   return toRevoke.length;
+}
+
+function presenceOf(
+  lastSeenAt: Date | null,
+  now: Date,
+  inactiveAfterMs: number,
+): DevicePresenceCode {
+  if (!lastSeenAt) {
+    return 'inactive';
+  }
+  return now.getTime() - lastSeenAt.getTime() >= inactiveAfterMs ? 'inactive' : 'online';
 }
 
 async function touchDevice(

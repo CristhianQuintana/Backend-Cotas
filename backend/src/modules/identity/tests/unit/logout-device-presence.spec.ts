@@ -107,7 +107,7 @@ describe('logout libera dispositivo y notifica', () => {
       },
     };
 
-    const presence = new DevicePresenceNotifier(identity, push as never);
+    const presence = new DevicePresenceNotifier(identity, clock, push as never);
     const logout = new LogoutUseCase(identity, identity, presence, clock);
 
     const before = await identity.listDevices(user.id, phoneSlot);

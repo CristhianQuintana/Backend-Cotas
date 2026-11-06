@@ -54,6 +54,39 @@ export class FcmPushService {
     tokens: readonly string[],
     input: { deviceId: string; deviceName: string | null },
   ): Promise<void> {
+    await this.notifyDeviceEvent(tokens, {
+      type: 'device_session_closed',
+      title: 'Sesión cerrada',
+      body: `Se cerró la sesión en ${input.deviceName?.trim() || 'un dispositivo'}.`,
+      deviceId: input.deviceId,
+      deviceName: input.deviceName,
+    });
+  }
+
+  /** Aparato sigue vinculado pero sin uso reciente (app en background / TV apagada). */
+  async notifyDeviceInactive(
+    tokens: readonly string[],
+    input: { deviceId: string; deviceName: string | null },
+  ): Promise<void> {
+    await this.notifyDeviceEvent(tokens, {
+      type: 'device_inactive',
+      title: 'Dispositivo inactivo',
+      body: `${input.deviceName?.trim() || 'Un dispositivo'} está inactivo.`,
+      deviceId: input.deviceId,
+      deviceName: input.deviceName,
+    });
+  }
+
+  private async notifyDeviceEvent(
+    tokens: readonly string[],
+    input: {
+      type: string;
+      title: string;
+      body: string;
+      deviceId: string;
+      deviceName: string | null;
+    },
+  ): Promise<void> {
     if (!this.config.fcmEnabled || tokens.length === 0) {
       return;
     }
@@ -61,20 +94,17 @@ export class FcmPushService {
       this.logger.warn('FCM habilitado sin credenciales completas; se omiten envíos.');
       return;
     }
-    const label = input.deviceName?.trim() || 'un dispositivo';
-    const title = 'Sesión cerrada';
-    const body = `Se cerró la sesión en ${label}.`;
     const bearer = await this.getAccessToken();
     for (const token of tokens) {
       try {
-        await this.send(bearer, token, title, body, {
-          type: 'device_session_closed',
+        await this.send(bearer, token, input.title, input.body, {
+          type: input.type,
           deviceId: input.deviceId,
           deviceName: input.deviceName ?? '',
         });
       } catch (error) {
         this.logger.warn(
-          `FCM device_session_closed falló: ${error instanceof Error ? error.message : 'error'}`,
+          `FCM ${input.type} falló: ${error instanceof Error ? error.message : 'error'}`,
         );
       }
     }
