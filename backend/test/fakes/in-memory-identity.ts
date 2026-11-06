@@ -59,6 +59,8 @@ export class InMemoryIdentity
   readonly recovery = new Map<string, { userId: string; usedAt: Date | null }>();
   readonly audits: Array<AuditEventView & { metadata?: AuditDraft['metadata'] }> = [];
   readonly pushTokens = new Map<string, { token: string; platform: string }>();
+  /** Permite alinear purga de huérfanos con el Clock de los tests. */
+  nowProvider: () => Date = () => new Date();
   private readonly lines = new Map<string, LineCredentials>();
   private readonly snapshots = new Map<string, SubscriptionSnapshot>();
 
@@ -269,7 +271,7 @@ export class InMemoryIdentity
   }
 
   async listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView> {
-    this.revokeOrphansInMemory(userId, new Date(), currentDeviceId);
+    this.revokeOrphansInMemory(userId, this.nowProvider(), currentDeviceId);
     const items = this.devices
       .filter((device) => device.userId === userId && device.status === 'ACTIVE')
       .sort(

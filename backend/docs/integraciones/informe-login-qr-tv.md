@@ -1,35 +1,107 @@
-# Informe para apps TV — Login por QR (device link)
+# Informe TV — Pantalla de login (tradicional + QR) y conexión con el móvil
 
 **API base:** `https://api.cotasperu.com/api/v1`  
-**Fecha:** 2026-11-05  
+**Fecha:** 2026-11-06  
 **Audiencia:** Samsung Tizen, LG webOS, Android / Google TV, Flutter TV  
+**Contrato hermano:** `informe-login-qr-movil.md`  
+**Verificación backend:** flujo unitario `device-link` (crear → pending → approve → approved+tokens → consumed) + `DEVICE_LIMIT` en approve.
 
 ---
 
-## Objetivo
+## 1. Qué debe verse en el TV (layout obligatorio)
 
-El televisor inicia sesión **sin teclear usuario/clave**: muestra un QR, el abonado lo aprueba en el móvil ya logueado, y el TV recibe **su propia** sesión (tokens + cupo de dispositivos).
-
-El QR **nunca** lleva usuario, contraseña ni tokens.
-
----
-
-## Flujo (TV)
+Pantalla de acceso en **dos columnas** (en móvil TV / 10-foot UI puede apilarse, pero el concepto es el mismo):
 
 ```text
-1. TV genera/persiste deviceId estable (UUID de instalación)
-2. POST /auth/device-link/session
-3. Muestra QR (qrPayload) + código corto (linkCode) en pantalla
-4. Cada pollIntervalMs → GET /auth/device-link/session/{linkCode}?deviceId=…
-5. status=approved → guardar accessToken + refreshToken → entrar al Home
-6. Si expired → volver a crear sesión QR
+┌─────────────────────────────┬─────────────────────────────┐
+│  IZQUIERDA                  │  DERECHA                    │
+│  Login tradicional          │  Código QR                  │
+│                             │                             │
+│  Usuario: [________]        │     ┌───────────┐           │
+│  Clave:   [________]        │     │   QR      │           │
+│  [ Iniciar sesión ]         │     │  imagen   │           │
+│                             │     └───────────┘           │
+│                             │  Código: AB3K7N2P           │
+│                             │  “Escanea con la app        │
+│                             │   COTAS en tu celular”      │
+│                             │  (expira en ~2 min)         │
+└─────────────────────────────┴─────────────────────────────┘
 ```
+
+| Zona | Contenido | Backend |
+| --- | --- | --- |
+| **Izquierda** | Usuario + clave + botón “Iniciar sesión” | `POST /auth/login` (igual que hoy) |
+| **Derecha** | QR + código de 8 caracteres + texto de ayuda | `POST /auth/device-link/session` + poll |
+
+Ambos caminos terminan con la **misma** sesión de app: `accessToken` + `refreshToken` del **TV** (nunca tokens del móvil).
 
 ---
 
-## Endpoints
+## 2. Cómo se comunican TV ↔ API ↔ móvil (flujo completo)
 
-### 1) Crear sesión QR (público)
+```text
+ TV (derecha)                         API COTAS                         Móvil (logueado)
+ ────────────                         ─────────                         ────────────────
+ 1. deviceId estable (UUID)
+ 2. POST /auth/device-link/session ──► crea challenge PENDING
+    ◄── linkCode, qrPayload, expiresIn, pollIntervalMs
+ 3. Dibuja QR + código en pantalla
+ 4. Cada ~2,5 s:
+    GET .../session/{code}?deviceId= ─► status: pending
+                                                              5. Usuario abre “Vincular TV”
+                                                              6. Escanea QR / escribe código
+                                                              7. Confirma nombre (ej. cuarto02)
+                                                              8. POST /auth/device-link/approve
+                                                                 (Bearer del móvil)
+                                                            ◄── 200 + device en lista
+    9. Poll recibe status: approved
+       + accessToken + refreshToken
+ 10. Guarda tokens → Home
+ 11. Siguiente poll → consumed
+                                                              12. GET /devices ve el TV
+                                                              13. DELETE /devices/{id}
+                                                                  cierra sesión del TV
+```
+
+**Reglas de seguridad (no negociables)**
+
+- El QR solo lleva el **código** (`cotas://device-link?code=XXXXXXXX`).
+- **Prohibido** meter usuario, clave, `accessToken` o `refreshToken` en el QR.
+- El móvil **no** “empuja” su sesión al TV: solo **aprueba** el código.
+- El TV obtiene tokens **propios** al canjear (poll `approved`).
+
+---
+
+## 3. Columna izquierda — login tradicional
+
+Igual que el contrato actual de apps IPTV:
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{
+  "username": "<linea>",
+  "password": "<clave>",
+  "deviceId": "<uuid-estable-del-tv>",
+  "platform": "tv",
+  "deviceName": "Sala LG"
+}
+```
+
+- Enviar siempre el mismo `deviceId` del televisor.
+- Respuesta: `accessToken`, `refreshToken`, `expiresIn`, `tokenType`.
+- Guardar tokens y entrar al Home.
+- Ante `403` `DEVICE_LIMIT`: mensaje para que el usuario revoque un aparato desde el móvil (o reintente tras liberar cupo).
+
+---
+
+## 4. Columna derecha — código QR (detalle de implementación)
+
+### 4.1 Al mostrar la pantalla (o al enfocar la columna QR)
+
+1. Asegurar `deviceId` persistido (SharedPreferences / localStorage / Keychain TV).
+2. Llamar:
 
 ```http
 POST /api/v1/auth/device-link/session
@@ -41,12 +113,6 @@ Content-Type: application/json
   "deviceName": "LG Living"
 }
 ```
-
-| Campo | Obligatorio | Notas |
-| --- | --- | --- |
-| `deviceId` | **Sí** | UUID estable del TV; **no** regenerar en cada arranque |
-| `platform` | No | `tv`, `tizen`, `webos`, `android`, etc. |
-| `deviceName` | No | Sugerencia; el móvil puede sobrescribir al aprobar |
 
 **Respuesta 200**
 
@@ -60,27 +126,27 @@ Content-Type: application/json
 }
 ```
 
-- Generar QR con el string exacto `qrPayload` (o URL equivalente documentada).
-- Mostrar también `linkCode` por si el usuario escribe el código a mano en el móvil.
-- TTL típico: **120 s**. Pasado ese tiempo → `expired` → crear otra sesión.
+3. Generar la imagen QR con el string **exacto** `qrPayload`.
+4. Mostrar debajo el `linkCode` en tipografía grande (por si no pueden escanear).
+5. Arrancar poll cada `pollIntervalMs` (no &lt; 1 s).
 
-### 2) Poll / canje (público)
+### 4.2 Poll mientras el usuario está en la pantalla
 
 ```http
 GET /api/v1/auth/device-link/session/AB3K7N2P?deviceId=7c9e6679-7425-40de-944b-e07fc1f90ae7
 ```
 
-`deviceId` **debe** ser el mismo enviado al crear la sesión.
+`deviceId` **debe** ser el mismo del `POST /session`.
 
-| `status` | Acción en TV |
-| --- | --- |
-| `pending` | Seguir haciendo poll (`expiresIn` restante) |
-| `approved` | **Una sola vez** incluye tokens → guardar y navegar a Home |
-| `expired` | Mostrar “código vencido” → `POST …/session` de nuevo |
-| `denied` | Mostrar rechazo (poco frecuente) |
-| `consumed` | Ya se entregaron tokens; si no los tiene, pedir nuevo QR |
+| `status` | UI TV | Acción |
+| --- | --- | --- |
+| `pending` | “Esperando confirmación en el celular…” | Seguir poll; usar `expiresIn` para countdown |
+| `approved` | “¡Conectado!” | Guardar tokens → **Home** (una sola vez llegan tokens) |
+| `expired` | “Código vencido” | `POST /session` de nuevo y refrescar QR |
+| `denied` | “Rechazado” | Regenerar QR |
+| `consumed` | — | Ya se entregaron tokens; si no los tienes, regenerar QR |
 
-**Respuesta aprobada (ejemplo)**
+**Respuesta `approved` (única entrega de tokens)**
 
 ```json
 {
@@ -97,43 +163,49 @@ GET /api/v1/auth/device-link/session/AB3K7N2P?deviceId=7c9e6679-7425-40de-944b-e
 }
 ```
 
-A partir de aquí el TV usa el mismo contrato que login normal:  
-`Authorization: Bearer <accessToken>`, catálogo, playback, `POST /auth/refresh`, etc.
+A partir de aquí el TV usa el mismo contrato que el login tradicional: Bearer, catálogo, playback, `POST /auth/refresh`.
+
+### 4.3 Si el móvil cierra el TV a distancia
+
+`DELETE /devices/{id}` desde el móvil revoca el dispositivo y sus sesiones.  
+El TV empezará a recibir `401` → limpiar tokens y volver a esta pantalla (login | QR).
 
 ---
 
-## Reglas importantes
+## 5. Ciclo de vida del código (TTL)
 
-1. **No** copiar tokens del móvil al TV.
-2. **No** poner credenciales en el QR.
-3. Poll cada `pollIntervalMs` (≈ 2,5 s); no saturar (&lt; 1 s).
-4. Tras `approved`, **no** volver a esperar tokens del mismo código (`consumed`).
-5. Cierre remoto desde el móvil (`DELETE /devices/{id}`) invalida la sesión del TV → al fallar APIs con 401, volver a pantalla QR/login.
-
----
-
-## Errores frecuentes
-
-| HTTP / code | Significado |
+| Evento | Tiempo |
 | --- | --- |
-| `404` `DEVICE_LINK_INVALID` | Código inexistente o `deviceId` no coincide |
-| `410` `DEVICE_LINK_EXPIRED` | Código vencido (en approve; en poll suele venir `status: expired`) |
-| `429` | Rate limit — respetar `pollIntervalMs` |
+| Código válido | **120 s** desde `POST /session` |
+| Intervalo de poll recomendado | **2500 ms** (`pollIntervalMs`) |
+| Tras `approved` | El siguiente poll responde `consumed` (sin tokens) |
 
 ---
 
-## Checklist QA TV
+## 6. Errores
 
-- [ ] `deviceId` estable entre reinicios de la app.
-- [ ] QR escaneable; código legible a 3 m.
-- [ ] Tras aprobar en móvil (&lt; 2 min), TV entra sin teclear clave.
-- [ ] Segundo poll del mismo código → `consumed` (sin tokens duplicados).
+| HTTP / code | Significado | UI |
+| --- | --- | --- |
+| `404` `DEVICE_LINK_INVALID` | Código malo o `deviceId` distinto | Regenerar QR |
+| `410` `DEVICE_LINK_EXPIRED` | Venció (suele verse como `status: expired` en poll) | Regenerar QR |
+| `429` | Rate limit | Respetar `pollIntervalMs` |
+| `403` `DEVICE_LIMIT` | Solo en login tradicional o si el móvil no pudo aprobar | Mensaje: liberar dispositivo en la app móvil |
+
+---
+
+## 7. Checklist QA TV
+
+- [ ] Layout: **izquierda** login usuario/clave; **derecha** QR + código.
+- [ ] Login tradicional con `deviceId` estable funciona.
+- [ ] QR se crea al entrar a la pantalla / al regenerar.
+- [ ] Tras aprobar en el móvil (&lt; 2 min), el TV entra al Home **sin** teclear clave.
+- [ ] Segundo poll del mismo código → `consumed`.
 - [ ] Código vencido regenera QR nuevo.
-- [ ] Tras cerrar el TV desde el móvil, el TV pierde sesión (401) y muestra login/QR.
+- [ ] Cierre remoto desde móvil → TV a login/QR con 401.
+- [ ] QR **no** contiene user/clave/tokens (solo `cotas://device-link?code=…`).
 
 ---
 
-## Contacto contrato
+## 8. Mensaje corto al equipo TV
 
-Detalle compartido: `docs/integraciones/cuenta-y-notificaciones.md` (sección device-link).  
-Informe móvil hermano: `docs/integraciones/informe-login-qr-movil.md`.
+> En la pantalla de acceso: login clásico a la izquierda; QR a la derecha. El QR es un código de un solo uso que el móvil aprueba. El TV hace poll y recibe **su** sesión. Luego todo es igual al login normal.

@@ -1,45 +1,103 @@
-# Informe para app móvil — Login TV por QR + registro de dispositivos
+# Informe móvil — Escaneo QR + gestión de dispositivos vinculados
 
 **API base:** `https://api.cotasperu.com/api/v1`  
-**Fecha:** 2026-11-05  
+**Fecha:** 2026-11-06  
 **Audiencia:** Flutter COTAS IPTV (`appcotasiptv`) y clientes móviles equivalentes  
+**Contrato hermano:** `informe-login-qr-tv.md`  
+**Verificación backend:** flujo unitario `device-link` (crear → approve → redeem tokens TV → consumed) + rechazo `DEVICE_LIMIT` con cupo lleno.
 
 ---
 
-## Objetivo UX
+## 1. Módulos que debe tener la app móvil
 
-1. Usuario ya logueado en el móvil.
-2. Escanea el QR del televisor (o escribe el código de 8 caracteres).
-3. Confirma un **registro** (nombre, tipo de aparato, fecha).
-4. El TV inicia sesión solo.
-5. Ese TV aparece en un apartado del móvil; desde ahí se puede **cerrar sesión** remota.
+Además del login normal del celular, se requieren **dos módulos** conectados:
 
----
-
-## Flujo (móvil)
+| Módulo | Dónde en la app | Para qué |
+| --- | --- | --- |
+| **A. Vincular TV (escaneo QR)** | Entrada clara: Perfil / Ajustes / “Vincular televisor” | Escanea el QR de la columna derecha del TV y confirma el registro |
+| **B. Dispositivos vinculados** | Apartado “Mis dispositivos” / “Sesiones” | Lista aparatos con sesión, contador `x / y`, cerrar sesión remota del TV |
 
 ```text
-1. Usuario autenticado (Bearer accessToken válido)
-2. Escáner QR → parsear cotas://device-link?code=XXXXXXXX
-   (o input manual del linkCode)
-3. Pantalla de confirmación:
-   - nombre: editable (ej. "cuarto02")
-   - dispositivo: Televisor / plataforma (informativo)
-   - fecha: ahora (autocompletada en UI; el servidor guarda createdAt)
-4. POST /auth/device-link/approve
-5. Éxito → navegar al apartado Dispositivos (GET /devices)
-6. Cerrar TV → DELETE /devices/{id}
+Perfil / Ajustes
+├── Contador: connectedSessions / maxDevices   ← GET /auth/me
+├── [ Vincular televisor ]                     ← Módulo A (cámara + confirmación)
+└── Mis dispositivos                           ← Módulo B (GET /devices)
+      ├── Este celular (current)
+      ├── cuarto02 · TV · conectado
+      └── …  [ Cerrar sesión ]
 ```
 
 ---
 
-## Endpoints
+## 2. Cómo se comunican móvil ↔ API ↔ TV (flujo completo)
 
-### 1) Aprobar enlace (Bearer obligatorio)
+El usuario **ya está logueado** en el móvil (`Bearer accessToken` válido).
+
+```text
+ TV (pantalla login, columna derecha)     API                         Móvil
+ ────────────────────────────────────     ───                         ─────
+ Muestra QR + código AB3K7N2P
+ (POST /auth/device-link/session)         challenge PENDING
+ Poll cada 2,5 s → pending
+                                                                  Usuario abre “Vincular TV”
+                                                                  Cámara / pegar código
+                                                                  Parse: cotas://device-link?code=…
+                                                                  Pantalla confirmar:
+                                                                    nombre: cuarto02
+                                                                    tipo: Televisor
+                                                                    fecha: ahora (UI)
+                                                                  POST /auth/device-link/approve
+                                                                    Authorization: Bearer <móvil>
+                                                                  ◄── 200 { device, used, limit }
+                                                                  Ir a “Mis dispositivos”
+                                                                  GET /devices → aparece el TV
+ Poll → approved + tokens del TV
+ TV entra al Home
+                                                                  (Opcional) DELETE /devices/{idTV}
+                                                                  TV pierde sesión (401)
+```
+
+**Importante:** el móvil **autoriza** el código; **no** envía su `refreshToken` al TV. El TV canjea solo y recibe tokens propios.
+
+---
+
+## 3. Módulo A — Escaneo y registro del TV
+
+### 3.1 Entrada
+
+- Botón / tile: **“Vincular televisor”** o **“Escanear código del TV”**.
+- Requiere sesión móvil activa. Si el token expiró → refresh o re-login antes de escanear.
+
+### 3.2 Captura del código
+
+1. Abrir cámara (escáner QR).
+2. Payload canónico del TV:
+
+```text
+cotas://device-link?code=AB3K7N2P
+```
+
+3. Extraer query `code` (8 caracteres `[2-9A-HJ-NP-Z]`), pasar a **mayúsculas**.
+4. Alternativa: campo “Ingresar código” si no puede escanear (el TV muestra el mismo `linkCode` bajo el QR).
+
+### 3.3 Pantalla de confirmación del registro
+
+Antes del approve, mostrar un formulario de registro del aparato:
+
+| Campo en UI | Origen | Editable | Qué se envía al API |
+| --- | --- | --- | --- |
+| Nombre | default vacío o “Televisor” | **Sí** (ej. `cuarto02`) | `deviceName` |
+| Dispositivo | “Televisor” / TV | No (informativo) | — |
+| Fecha | `DateTime.now()` en UI | No | El servidor guarda `createdAt` |
+| Cupo actual | `GET /auth/me` o último `GET /devices` | No | — |
+
+Botones: **Confirmar** / **Cancelar**.
+
+### 3.4 Llamada de approve
 
 ```http
 POST /api/v1/auth/device-link/approve
-Authorization: Bearer <accessToken>
+Authorization: Bearer <accessToken_del_móvil>
 Content-Type: application/json
 
 {
@@ -47,11 +105,6 @@ Content-Type: application/json
   "deviceName": "cuarto02"
 }
 ```
-
-| Campo | Obligatorio | Notas |
-| --- | --- | --- |
-| `linkCode` | **Sí** | 8 chars del QR (alfabeto sin 0/O/1/I) |
-| `deviceName` | No | Nombre visible en la lista; si falta usa el del TV o “Televisor” |
 
 **Respuesta 200**
 
@@ -69,20 +122,26 @@ Content-Type: application/json
 }
 ```
 
-Guardar en UI local si quieren caché, pero la **fuente de verdad** es `GET /devices`.
+- Toast: “Televisor vinculado”.
+- Navegar al **Módulo B** y refrescar lista.
+- En el TV (columna derecha), el poll pasará a `approved` y el televisor entrará solo.
 
-**Errores**
+### 3.5 Errores del escaneo / approve
 
-| HTTP | code | UI sugerida |
+| HTTP | code | Mensaje UI sugerido |
 | --- | --- | --- |
-| 403 | `DEVICE_LIMIT` | “Límite de dispositivos. Cierra uno en Dispositivos y reintenta.” (`details.used` / `details.limit`) |
-| 404/409 | `DEVICE_LINK_INVALID` | “Código inválido o ya usado.” |
-| 410 | `DEVICE_LINK_EXPIRED` | “El QR venció; genera uno nuevo en el TV.” |
-| 401 | `UNAUTHORIZED` | Renovar token / re-login |
+| 403 | `DEVICE_LIMIT` | “Límite de dispositivos (`used`/`limit`). Cierra uno en Mis dispositivos y reintenta.” |
+| 404 / 409 | `DEVICE_LINK_INVALID` | “Código inválido o ya usado. Genera un QR nuevo en el TV.” |
+| 410 | `DEVICE_LINK_EXPIRED` | “El QR venció (~2 min). Pide un código nuevo en el televisor.” |
+| 401 | `UNAUTHORIZED` | Renovar sesión del móvil y volver a escanear |
 
-Al aprobar con cupo lleno el backend **no** desplaza otro aparato: el usuario debe revocar uno a propósito.
+Con cupo lleno el backend **no** expulsa otro aparato automáticamente en el approve QR: el usuario debe elegir cuál cerrar en el Módulo B.
 
-### 2) Listar dispositivos (apartado “Mis dispositivos”)
+---
+
+## 4. Módulo B — Dispositivos vinculados (control de sesiones)
+
+### 4.1 Listar
 
 ```http
 GET /api/v1/devices
@@ -116,90 +175,83 @@ Authorization: Bearer <accessToken>
 }
 ```
 
-| Campo UI | Origen |
+| UI del listado | Campo API |
 | --- | --- |
+| Título `x / y` | `used` / `limit` |
 | Nombre | `deviceName` |
-| Dispositivo / tipo | `platform` (`TV`, `ANDROID`, …) |
-| Fecha de registro | `createdAt` |
+| Tipo | `platform` (`TV`, `ANDROID`, `IOS`, …) |
+| Registrado | `createdAt` |
 | Última conexión | `lastSeenAt` |
-| Contador `x / y` | `used` / `limit` **o** `GET /auth/me` → `connectedSessions` / `maxDevices` |
-| Este aparato | `current === true` |
+| “Este dispositivo” | `current === true` |
+| Acción “Cerrar sesión” | visible si `current === false` (o también en el actual con confirmación) |
 
-**401 en `/devices`:** token ausente/expirado — no es “ruta rota”. Renovar con refresh o re-login.
+**401:** token inválido/expirado — no es “falta el endpoint”. Renovar Bearer.
 
-### 3) Cerrar sesión del TV (remoto)
+### 4.2 Contador del perfil (obligatorio para “No disponible”)
+
+```http
+GET /api/v1/auth/me
+```
+
+Pintar: **`connectedSessions / maxDevices`** (enteros).  
+Opcional: `GET /account/subscription` → `activeDevices` / `maxDevices`.
+
+**No** usar `activeConnections` / `maxConnections` de XUI para este texto (son streams, no aparatos).
+
+### 4.3 Cerrar sesión de un TV (o de otro aparato)
 
 ```http
 DELETE /api/v1/devices/{id}
 Authorization: Bearer <accessToken>
 ```
 
-→ `204`. Revoca el dispositivo y **todas** sus sesiones. El TV dejará de autorizar APIs.
+→ `204`.
 
-No borrar el ítem solo en disco local: refrescar `GET /devices`.
+Efecto:
 
-### 4) Contador del perfil (ya disponible)
-
-```http
-GET /api/v1/auth/me
-```
-
-Usar `connectedSessions` / `maxDevices` (enteros).  
-**No** usar `activeConnections` de suscripción (eso es streaming XUI).
-
-Opcional: `GET /account/subscription` → `activeDevices` / `maxDevices`.
+1. El dispositivo pasa a no listarse como ACTIVE.
+2. Se revocan sus sesiones en el servidor.
+3. El TV deja de poder llamar APIs con ese token (`401`) y vuelve a la pantalla login | QR.
+4. Refrescar `GET /devices` y el contador del perfil.
 
 ---
 
-## Parseo del QR
+## 5. Conexión extremo a extremo (checklist de comunicación)
 
-Payload canónico:
-
-```text
-cotas://device-link?code=AB3K7N2P
-```
-
-1. Si el esquema es `cotas` y path/host indica `device-link`, leer query `code`.
-2. Validar 8 caracteres `[2-9A-HJ-NP-Z]`.
-3. Normalizar a mayúsculas antes del approve.
-4. Si el usuario pega solo el código, aceptar input manual.
-
----
-
-## Pantalla de confirmación (sugerida)
-
-| Campo | Origen | Editable |
-| --- | --- | --- |
-| Nombre | default `Televisor` o vacío | Sí → `deviceName` |
-| Dispositivo | “Televisor” / marca si la conocen | No (informativo) |
-| Fecha | `DateTime.now()` en UI | No (servidor guarda `createdAt`) |
-| Cupo | `used/limit` tras approve o desde `/me` | No |
-
-Tras confirmar con éxito: toast “TV conectado” + ir a lista de dispositivos.
+| Paso | Quién | Endpoint | Resultado esperado |
+| --- | --- | --- | --- |
+| 1 | TV | `POST /auth/device-link/session` | QR + `linkCode` en columna derecha |
+| 2 | TV | `GET .../session/{code}?deviceId=` | `pending` mientras espera |
+| 3 | Móvil | Escaneo + confirmación nombre | UI Módulo A |
+| 4 | Móvil | `POST /auth/device-link/approve` | TV registrado; `used` aumenta |
+| 5 | TV | mismo GET poll | `approved` + tokens → Home |
+| 6 | Móvil | `GET /devices` | Ve el TV en Módulo B |
+| 7 | Móvil | `DELETE /devices/{id}` | TV desconectado |
+| 8 | TV | cualquier API con Bearer viejo | `401` → pantalla login \| QR |
 
 ---
 
-## Checklist QA móvil
+## 6. Checklist QA móvil
 
-- [ ] Escaneo QR con app logueada aprueba en &lt; 3 s.
-- [ ] TV aparece en `GET /devices` con el nombre elegido.
-- [ ] Perfil muestra `connectedSessions / maxDevices` coherente (ej. `2 / 3`).
-- [ ] Con cupo lleno, approve muestra `DEVICE_LIMIT` y lista permite `DELETE`.
-- [ ] Tras `DELETE` del TV, ese ítem desaparece y el contador baja.
-- [ ] Código vencido / inválido muestra mensaje claro.
-- [ ] Sin Bearer, `/devices` y `/approve` → 401 (renovar sesión).
-
----
-
-## Seguridad (resumen para el equipo)
-
-- El móvil **autoriza** el código; no envía su refresh token al TV.
-- El TV obtiene tokens propios al hacer poll.
-- Cerrar desde el móvil es `DELETE /devices/{id}`.
+- [ ] Existe entrada “Vincular televisor” (Módulo A) con cámara + código manual.
+- [ ] Confirmación pide nombre (ej. `cuarto02`) antes del approve.
+- [ ] Tras approve, el TV aparece en **Mis dispositivos** con ese nombre.
+- [ ] Perfil muestra `connectedSessions / maxDevices` (no “No disponible”).
+- [ ] Cupo lleno → `DEVICE_LIMIT` y se puede liberar con DELETE.
+- [ ] Cerrar sesión del TV desde el móvil deja el televisor en login/QR.
+- [ ] QR vencido / inválido muestra mensaje claro.
+- [ ] Sin Bearer, `/approve` y `/devices` → 401 (renovar sesión).
 
 ---
 
-## Contacto contrato
+## 7. Seguridad (resumen)
 
-- Este informe + `informe-login-qr-tv.md`
-- Cupo / perfil: `docs/integraciones/cuenta-y-notificaciones.md`
+- El móvil solo envía `linkCode` + `deviceName` con su Bearer.
+- No reenviar al TV la sesión del celular.
+- Cierre remoto = `DELETE /devices/{id}`.
+
+---
+
+## 8. Mensaje corto al equipo móvil
+
+> Implementar dos piezas: (A) escanear el QR del TV y confirmar el registro; (B) listar y cerrar dispositivos vinculados. El TV y el móvil se coordinan solo por la API: el móvil aprueba el código; el TV hace poll y recibe su propia sesión.

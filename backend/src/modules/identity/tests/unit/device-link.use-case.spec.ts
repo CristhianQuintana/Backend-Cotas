@@ -38,6 +38,7 @@ describe('device-link QR', () => {
 
   function setup() {
     const identity = new InMemoryIdentity();
+    identity.nowProvider = () => clock.now();
     const useCase = new DeviceLinkUseCase(
       identity,
       identity,
@@ -115,6 +116,14 @@ describe('device-link QR', () => {
     const devices = await identity.listDevices(mobile.id, mobile.deviceId);
     expect(devices.used).toBe(1);
     expect(devices.items[0]?.deviceName).toBe('cuarto02');
+
+    // Gestión remota: cerrar el TV desde el móvil invalida su sesión.
+    const tvInternalId = redeemed.device.id;
+    const revoked = await identity.revokeDevice(tvInternalId, mobile.id, clock.now());
+    expect(revoked).toBe('revoked');
+    expect(identity.sessions.every((s) => s.revokedAt !== null)).toBe(true);
+    const after = await identity.listDevices(mobile.id, mobile.deviceId);
+    expect(after.used).toBe(0);
   });
 
   it('rechaza approve si el cupo está lleno (DEVICE_LIMIT)', async () => {
