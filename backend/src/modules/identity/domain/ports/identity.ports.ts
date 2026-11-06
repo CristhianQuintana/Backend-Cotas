@@ -57,12 +57,7 @@ export interface DeviceRegistrationInput {
   onLimit?: 'displace' | 'reject';
 }
 
-export type DeviceLinkStatusCode =
-  | 'PENDING'
-  | 'APPROVED'
-  | 'EXPIRED'
-  | 'DENIED'
-  | 'CONSUMED';
+export type DeviceLinkStatusCode = 'PENDING' | 'APPROVED' | 'EXPIRED' | 'DENIED' | 'CONSUMED';
 
 export interface DeviceLinkChallengeRecord {
   id: string;
