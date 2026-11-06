@@ -276,11 +276,16 @@ describe('API COTAS', () => {
       .set('Authorization', `Bearer ${tokenB}`)
       .expect(204);
 
+    // Re-login con el mismo deviceId reemplaza la sesión A; usar tokenB (sesión viva).
     const afterDelete = await http()
       .get('/api/v1/account/reminders')
-      .set('Authorization', `Bearer ${tokenA}`)
+      .set('Authorization', `Bearer ${tokenB}`)
       .expect(200);
     expect(afterDelete.body.items).toEqual([]);
+    await http()
+      .get('/api/v1/account/reminders')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(401);
 
     const other = await login('other.demo');
     await http()
