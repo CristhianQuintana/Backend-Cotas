@@ -222,6 +222,18 @@ Variables (ver `.env.example`): `FCM_ENABLED`, `FCM_PROJECT_ID`, `FCM_CLIENT_EMA
 
 Con FCM deshabilitado, la API de anuncios sigue siendo útil para la UI.
 
+### Push de sesión cerrada en otro dispositivo
+
+Cuando un aparato hace `POST /auth/logout` o se revoca con `DELETE /devices/{id}`, los demás aparatos ACTIVE con `pushToken` pueden recibir:
+
+| Campo | Valor |
+| --- | --- |
+| `data.type` | `device_session_closed` |
+| `data.deviceId` | id interno del aparato que salió |
+| `data.deviceName` | nombre visible (o vacío) |
+
+La app móvil debe refrescar `GET /devices` al recibir este evento (y también en `onResume`).
+
 ## Recordatorios EPG (sincronización entre celulares)
 
 Persistidos en PostgreSQL ligados al **usuario JWT** (misma cuenta/línea), no al dispositivo. La app programa la notificación local tras el `GET`.

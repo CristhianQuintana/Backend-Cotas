@@ -9,6 +9,7 @@ import {
 } from '../../../../common/exceptions/domain-error';
 import { CLOCK, type Clock } from '../../../../common/utils/clock';
 import type { AuthenticatedUser } from '../../domain/models/authenticated-user';
+import { DevicePresenceNotifier } from '../../application/use-cases/device-presence-notifier';
 import { RegisterPushTokenUseCase } from '../../application/use-cases/register-push-token.use-case';
 import { LINE_ACCESS, type LineAccess } from '../../domain/ports/identity.ports';
 
@@ -35,6 +36,7 @@ export class DevicesController {
   constructor(
     @Inject(RegisterPushTokenUseCase) private readonly registerPush: RegisterPushTokenUseCase,
     @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+    @Inject(DevicePresenceNotifier) private readonly presence: DevicePresenceNotifier,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -61,9 +63,12 @@ export class DevicesController {
     @CurrentUser() user: AuthenticatedUser,
     @Param() params: DeviceIdParamDto,
   ): Promise<void> {
+    const before = await this.lines.listDevices(user.id, user.deviceId);
+    const target = before.items.find((item) => item.id === params.id);
     const result = await this.lines.revokeDevice(params.id, user.id, this.clock.now());
     if (result === 'not_found') {
       throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
     }
+    await this.presence.notifySessionClosed(user.id, params.id, target?.deviceName ?? null);
   }
 }

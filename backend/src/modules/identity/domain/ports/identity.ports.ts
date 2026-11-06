@@ -206,6 +206,8 @@ export interface LineAccess {
     platform: string,
     now: Date,
   ): Promise<void>;
+  /** Tokens FCM de aparatos ACTIVE del usuario (opcionalmente excluye uno). */
+  listPushTokens(userId: string, excludeDeviceId?: string | null): Promise<string[]>;
   /**
    * Registra o reutiliza un dispositivo.
    * Si el cupo bajó, se conservan los más antiguos (`createdAt`); los más nuevos reciben DEVICE_LIMIT.

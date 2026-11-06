@@ -39,6 +39,7 @@ import { AdminUsersUseCase } from './modules/identity/application/use-cases/admi
 import { GetSubscriptionUseCase } from './modules/identity/application/use-cases/subscription.use-case';
 import { RegisterPushTokenUseCase } from './modules/identity/application/use-cases/register-push-token.use-case';
 import { AccountRemindersService } from './modules/identity/application/use-cases/account-reminders.service';
+import { DevicePresenceNotifier } from './modules/identity/application/use-cases/device-presence-notifier';
 import {
   GetProfileUseCase,
   ListSessionsUseCase,
@@ -136,6 +137,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     GetProfileUseCase,
     GetSubscriptionUseCase,
     AccountRemindersService,
+    DevicePresenceNotifier,
     RegisterPushTokenUseCase,
     ListSessionsUseCase,
     RevokeSessionUseCase,

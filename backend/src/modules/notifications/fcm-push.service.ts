@@ -36,10 +36,45 @@ export class FcmPushService {
     const bearer = await this.getAccessToken();
     for (const token of tokens) {
       try {
-        await this.send(bearer, token, title, body, announcements[0]!);
+        await this.send(bearer, token, title, body, {
+          type: 'catalog_announcement',
+          kind: announcements[0]!.kind,
+          contentId: announcements[0]!.contentId,
+        });
       } catch (error) {
         this.logger.warn(
           `FCM falló para un token: ${error instanceof Error ? error.message : 'error'}`,
+        );
+      }
+    }
+  }
+
+  /** Avisa a otros aparatos (p. ej. el celular) que un dispositivo cerró sesión. */
+  async notifyDeviceSessionClosed(
+    tokens: readonly string[],
+    input: { deviceId: string; deviceName: string | null },
+  ): Promise<void> {
+    if (!this.config.fcmEnabled || tokens.length === 0) {
+      return;
+    }
+    if (!this.config.fcmProjectId || !this.config.fcmClientEmail || !this.config.fcmPrivateKey) {
+      this.logger.warn('FCM habilitado sin credenciales completas; se omiten envíos.');
+      return;
+    }
+    const label = input.deviceName?.trim() || 'un dispositivo';
+    const title = 'Sesión cerrada';
+    const body = `Se cerró la sesión en ${label}.`;
+    const bearer = await this.getAccessToken();
+    for (const token of tokens) {
+      try {
+        await this.send(bearer, token, title, body, {
+          type: 'device_session_closed',
+          deviceId: input.deviceId,
+          deviceName: input.deviceName ?? '',
+        });
+      } catch (error) {
+        this.logger.warn(
+          `FCM device_session_closed falló: ${error instanceof Error ? error.message : 'error'}`,
         );
       }
     }
@@ -50,7 +85,7 @@ export class FcmPushService {
     token: string,
     title: string,
     body: string,
-    sample: CatalogAnnouncementDraft,
+    data: Record<string, string>,
   ): Promise<void> {
     const url = `https://fcm.googleapis.com/v1/projects/${this.config.fcmProjectId}/messages:send`;
     const response = await fetch(url, {
@@ -63,11 +98,7 @@ export class FcmPushService {
         message: {
           token,
           notification: { title, body },
-          data: {
-            kind: sample.kind,
-            contentId: sample.contentId,
-            type: 'catalog_announcement',
-          },
+          data,
         },
       }),
       signal: AbortSignal.timeout(10_000),

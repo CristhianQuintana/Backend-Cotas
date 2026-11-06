@@ -27,7 +27,8 @@ import {
 } from '../../domain/ports/identity.ports';
 
 const LINK_TTL_SECONDS = 120;
-const POLL_INTERVAL_MS = 2_500;
+/** Intervalo recomendado al TV: lo bastante corto para entrar al Home en ≤1 s tras approve. */
+const POLL_INTERVAL_MS = 1_000;
 const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 const CODE_LENGTH = 8;
 

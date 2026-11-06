@@ -46,7 +46,7 @@ Ambos caminos terminan con la **misma** sesión de app: `accessToken` + `refresh
  2. POST /auth/device-link/session ──► crea challenge PENDING
     ◄── linkCode, qrPayload, expiresIn, pollIntervalMs
  3. Dibuja QR + código en pantalla
- 4. Cada ~2,5 s:
+ 4. Cada ~1 s:
     GET .../session/{code}?deviceId= ─► status: pending
                                                               5. Usuario abre “Vincular TV”
                                                               6. Escanea QR / escribe código
@@ -121,14 +121,14 @@ Content-Type: application/json
   "linkCode": "AB3K7N2P",
   "qrPayload": "cotas://device-link?code=AB3K7N2P",
   "expiresIn": 120,
-  "pollIntervalMs": 2500,
+  "pollIntervalMs": 1000,
   "deviceId": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 }
 ```
 
 3. Generar la imagen QR con el string **exacto** `qrPayload`.
 4. Mostrar debajo el `linkCode` en tipografía grande (por si no pueden escanear).
-5. Arrancar poll cada `pollIntervalMs` (no &lt; 1 s).
+5. Arrancar poll cada `pollIntervalMs` (**1000 ms**; no cachear el código).
 
 ### 4.2 Poll mientras el usuario está en la pantalla
 
@@ -177,8 +177,9 @@ El TV empezará a recibir `401` → limpiar tokens y volver a esta pantalla (log
 | Evento | Tiempo |
 | --- | --- |
 | Código válido | **120 s** desde `POST /session` |
-| Intervalo de poll recomendado | **2500 ms** (`pollIntervalMs`) |
+| Intervalo de poll recomendado | **1000 ms** (`pollIntervalMs`) — no cachear; regenerar si `expired`/`consumed` |
 | Tras `approved` | El siguiente poll responde `consumed` (sin tokens) |
+| Latencia tras approve en móvil | **≤ 1 s** en el siguiente poll (sin rate-limit en el GET poll) |
 
 ---
 

@@ -39,9 +39,12 @@ export class DeviceLinkController {
     return this.links.createSession(body);
   }
 
-  /** TV: consulta estado; si approved entrega tokens una sola vez. */
+  /**
+   * TV: consulta estado; si approved entrega tokens una sola vez.
+   * Sin SensitiveRateLimit: el poll es frecuente (~1 s) y un tope bajo
+   * bloqueaba el canje tras ~25 s (429) → TV quedaba en login mucho tiempo.
+   */
   @Public()
-  @UseGuards(SensitiveRateLimitGuard)
   @Get('session/:code')
   poll(
     @Param() params: DeviceLinkCodeParamDto,

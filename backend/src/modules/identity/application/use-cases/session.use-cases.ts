@@ -15,15 +15,26 @@ import {
   type SessionRepository,
   type UserRepository,
 } from '../../domain/ports/identity.ports';
+import { DevicePresenceNotifier } from './device-presence-notifier';
 
 @Injectable()
 export class LogoutUseCase {
   constructor(
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
+    @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+    @Inject(DevicePresenceNotifier) private readonly presence: DevicePresenceNotifier,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   async execute(user: AuthenticatedUser, meta: RequestMeta): Promise<void> {
+    const now = this.clock.now();
+    const closedDeviceId = user.deviceId;
+    let deviceName: string | null = null;
+    if (closedDeviceId) {
+      const devices = await this.lines.listDevices(user.id, closedDeviceId);
+      deviceName = devices.items.find((item) => item.id === closedDeviceId)?.deviceName ?? null;
+    }
+
     const result = await this.sessions.revokeOwned(
       user.sessionId,
       user.id,
@@ -35,11 +46,14 @@ export class LogoutUseCase {
         correlationId: meta.correlationId,
         ipAddress: meta.ipAddress,
       },
-      this.clock.now(),
+      now,
     );
     if (result === 'not_found') {
       throw new DomainError(ErrorCodes.unauthorized, 401, PublicMessages.unauthorized);
     }
+
+    // El dispositivo queda REVOKED (si no hay más sesiones vivas) → avisar al celular.
+    await this.presence.notifySessionClosed(user.id, closedDeviceId, deviceName);
   }
 }
 
@@ -104,10 +118,21 @@ export class ListSessionsUseCase {
 export class RevokeSessionUseCase {
   constructor(
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
+    @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+    @Inject(DevicePresenceNotifier) private readonly presence: DevicePresenceNotifier,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
   async execute(user: AuthenticatedUser, sessionId: string, meta: RequestMeta): Promise<void> {
+    const now = this.clock.now();
+    const target = await this.sessions.findSessionById(sessionId);
+    const closedDeviceId = target?.userId === user.id ? (target.deviceId ?? null) : null;
+    let deviceName: string | null = null;
+    if (closedDeviceId) {
+      const devices = await this.lines.listDevices(user.id, user.deviceId);
+      deviceName = devices.items.find((item) => item.id === closedDeviceId)?.deviceName ?? null;
+    }
+
     const result = await this.sessions.revokeOwned(
       sessionId,
       user.id,
@@ -119,10 +144,12 @@ export class RevokeSessionUseCase {
         correlationId: meta.correlationId,
         ipAddress: meta.ipAddress,
       },
-      this.clock.now(),
+      now,
     );
     if (result === 'not_found') {
       throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.sessionNotFound);
     }
+
+    await this.presence.notifySessionClosed(user.id, closedDeviceId, deviceName);
   }
 }

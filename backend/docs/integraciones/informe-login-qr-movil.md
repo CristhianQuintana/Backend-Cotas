@@ -214,6 +214,19 @@ Efecto:
 3. El TV deja de poder llamar APIs con ese token (`401`) y vuelve a la pantalla login | QR.
 4. Refrescar `GET /devices` y el contador del perfil.
 
+### 4.4 Si el TV (u otro aparato) cierra sesión solo
+
+Cuando un televisor hace `POST /auth/logout` (o se revoca su sesión):
+
+1. Ese aparato **deja de aparecer** en el próximo `GET /devices` (queda `REVOKED` en servidor).
+2. Si el celular registró FCM (`PUT /devices/push-token`) y FCM está activo, recibe push:
+   - `data.type` = `device_session_closed`
+   - `data.deviceId` / `data.deviceName`
+   - notificación: “Sesión cerrada” / “Se cerró la sesión en &lt;nombre&gt;.”
+3. Al recibir el push (o al volver la app al primer plano): **refrescar** `GET /devices` y el contador `GET /auth/me`.
+
+Sin push, la lista solo se actualiza al refrescar (pull-to-refresh / onResume). No hay WebSocket de presencia.
+
 ---
 
 ## 5. Conexión extremo a extremo (checklist de comunicación)
@@ -239,6 +252,7 @@ Efecto:
 - [ ] Perfil muestra `connectedSessions / maxDevices` (no “No disponible”).
 - [ ] Cupo lleno → `DEVICE_LIMIT` y se puede liberar con DELETE.
 - [ ] Cerrar sesión del TV desde el móvil deja el televisor en login/QR.
+- [ ] Si el TV hace logout local, desaparece de Mis dispositivos al refrescar (y push `device_session_closed` si FCM).
 - [ ] QR vencido / inválido muestra mensaje claro.
 - [ ] Sin Bearer, `/approve` y `/devices` → 401 (renovar sesión).
 

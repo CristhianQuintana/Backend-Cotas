@@ -87,6 +87,7 @@ describe('device-link QR', () => {
     expect(created.linkCode).toHaveLength(8);
     expect(created.qrPayload).toContain(created.linkCode);
     expect(created.expiresIn).toBe(120);
+    expect(created.pollIntervalMs).toBe(1000);
 
     const pending = await useCase.poll({ linkCode: created.linkCode, deviceId: tvDeviceId }, meta);
     expect(pending.status).toBe('pending');

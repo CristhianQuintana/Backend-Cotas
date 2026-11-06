@@ -41,6 +41,7 @@ type MemoryDevice = {
   lastSeenAt: Date | null;
   createdAt: Date;
   revokedAt: Date | null;
+  pushToken: string | null;
 };
 
 export class InMemoryIdentity
@@ -204,10 +205,31 @@ export class InMemoryIdentity
     _now: Date,
   ): Promise<void> {
     const session = this.sessions.find((item) => item.id === sessionId && item.userId === userId);
-    if (!session || session.revokedAt) {
+    if (!session || session.revokedAt || !session.deviceId) {
       throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
     }
+    const device = this.devices.find(
+      (item) => item.id === session.deviceId && item.userId === userId && item.status === 'ACTIVE',
+    );
+    if (!device) {
+      throw new DomainError(ErrorCodes.notFound, 404, PublicMessages.notFound);
+    }
+    device.pushToken = token;
     this.pushTokens.set(sessionId, { token, platform });
+  }
+
+  async listPushTokens(userId: string, excludeDeviceId?: string | null): Promise<string[]> {
+    const unique = new Set<string>();
+    for (const device of this.devices) {
+      if (device.userId !== userId || device.status !== 'ACTIVE' || !device.pushToken) {
+        continue;
+      }
+      if (excludeDeviceId && device.id === excludeDeviceId) {
+        continue;
+      }
+      unique.add(device.pushToken);
+    }
+    return [...unique];
   }
 
   async claimDeviceSlot(input: DeviceRegistrationInput): Promise<string> {
@@ -271,6 +293,7 @@ export class InMemoryIdentity
       lastSeenAt: input.now,
       createdAt: input.now,
       revokedAt: null,
+      pushToken: null,
     };
     this.devices.push(created);
     return created.id;
