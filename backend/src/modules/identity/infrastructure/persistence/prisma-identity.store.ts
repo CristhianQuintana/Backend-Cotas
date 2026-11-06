@@ -321,21 +321,14 @@ export class PrismaIdentityStore
             const active = await tx.device.count({
               where: { userId: input.userId, status: 'ACTIVE' },
             });
-            if (active >= input.maxDevices) {
-              if (input.onLimit === 'reject') {
-                throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
-                  { field: 'used', rules: [String(active)] },
-                  { field: 'limit', rules: [String(input.maxDevices)] },
-                ]);
-              }
-              await enforceDeviceQuotaInTx(
-                tx,
-                input.userId,
-                Math.max(input.maxDevices - 1, 0),
-                input.now,
-                null,
-              );
+            if (active >= input.maxDevices && input.onLimit === 'reject') {
+              throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+                { field: 'used', rules: [String(active)] },
+                { field: 'limit', rules: [String(input.maxDevices)] },
+              ]);
             }
+            // No liberar hueco por adelantado: al reactivar se aplica oldest-win.
+            // Si este aparato es de los más nuevos, abajo queda REVOKED → DEVICE_LIMIT.
           }
           await tx.device.update({
             where: { id: existing.id },
@@ -347,7 +340,20 @@ export class PrismaIdentityStore
               deviceName: input.deviceName?.trim().slice(0, 80) || existing.deviceName,
             },
           });
-          await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, existing.id);
+          await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, null);
+          const stillActive = await tx.device.findFirst({
+            where: { id: existing.id, userId: input.userId, status: 'ACTIVE' },
+          });
+          if (!stillActive) {
+            // Cupo reducido / cupo lleno: este aparato es de los más nuevos → mensaje claro.
+            const used = await tx.device.count({
+              where: { userId: input.userId, status: 'ACTIVE' },
+            });
+            throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+              { field: 'used', rules: [String(used)] },
+              { field: 'limit', rules: [String(input.maxDevices ?? 0)] },
+            ]);
+          }
           return existing.id;
         }
 
@@ -362,7 +368,7 @@ export class PrismaIdentityStore
                 { field: 'limit', rules: [String(input.maxDevices)] },
               ]);
             }
-            // Login clave: desplaza el menos reciente.
+            // Login clave: libera hueco cerrando un aparato más nuevo (antiguos se priorizan).
             await enforceDeviceQuotaInTx(
               tx,
               input.userId,
@@ -1083,23 +1089,21 @@ async function enforceDeviceQuotaInTx(
   userId: string,
   maxDevices: number | null,
   now: Date,
-  keepDeviceId: string | null,
+  _keepDeviceId: string | null,
 ): Promise<number> {
   if (maxDevices === null) {
     return 0;
   }
   const limit = Math.max(0, Math.trunc(maxDevices));
+  // Conservar los más antiguos (createdAt); los más nuevos salen del cupo.
   const active = await tx.device.findMany({
     where: { userId, status: 'ACTIVE' },
-    orderBy: [{ lastSeenAt: 'desc' }, { createdAt: 'desc' }],
+    orderBy: [{ createdAt: 'asc' }, { lastSeenAt: 'asc' }],
   });
   if (active.length <= limit) {
     return 0;
   }
   const keep = new Set<string>();
-  if (keepDeviceId && limit > 0) {
-    keep.add(keepDeviceId);
-  }
   for (const row of active) {
     if (keep.size >= limit) {
       break;

@@ -59,7 +59,7 @@ Authorization: Bearer <accessToken>
 
 También: `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me` (`connectedSessions`/`maxDevices` → `x/y` del perfil), `GET /devices` (`used`/`limit`/`items`), `DELETE /devices/{id}`.  
 Login TV por QR: `POST /auth/device-link/session` (TV), `GET /auth/device-link/session/{code}?deviceId=` (TV poll), `POST /auth/device-link/approve` (móvil Bearer). Informes: `informe-login-qr-tv.md` / `informe-login-qr-movil.md`.  
-Ante `401` en `/devices` o `/me`: renovar token o re-login (Bearer obligatorio). Login con clave + cupo lleno desplaza el menos reciente; approve QR con cupo lleno → `DEVICE_LIMIT`. No loguear tokens ni contraseñas.
+Ante `401` en `/devices` o `/me`: renovar token o re-login (Bearer obligatorio). Si el cupo baja, se conservan los aparatos **más antiguos**; los nuevos reciben `403` `DEVICE_LIMIT`. Approve QR con cupo lleno → `DEVICE_LIMIT`. No loguear tokens ni contraseñas.
 
 ---
 

@@ -223,14 +223,11 @@ export class InMemoryIdentity
         const active = this.devices.filter(
           (d) => d.userId === input.userId && d.status === 'ACTIVE',
         ).length;
-        if (active >= input.maxDevices) {
-          if (input.onLimit === 'reject') {
-            throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
-              { field: 'used', rules: [String(active)] },
-              { field: 'limit', rules: [String(input.maxDevices)] },
-            ]);
-          }
-          this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
+        if (active >= input.maxDevices && input.onLimit === 'reject') {
+          throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+            { field: 'used', rules: [String(active)] },
+            { field: 'limit', rules: [String(input.maxDevices)] },
+          ]);
         }
       }
       existing.status = 'ACTIVE';
@@ -238,7 +235,16 @@ export class InMemoryIdentity
       existing.lastSeenAt = input.now;
       existing.platform = input.platform;
       existing.deviceName = input.deviceName?.trim().slice(0, 80) || existing.deviceName;
-      this.enforceInMemory(input.userId, input.maxDevices, input.now, existing.id);
+      this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
+      if (existing.status !== 'ACTIVE') {
+        const used = this.devices.filter(
+          (d) => d.userId === input.userId && d.status === 'ACTIVE',
+        ).length;
+        throw new DomainError(ErrorCodes.deviceLimit, 403, PublicMessages.deviceLimit, [
+          { field: 'used', rules: [String(used)] },
+          { field: 'limit', rules: [String(input.maxDevices ?? 0)] },
+        ]);
+      }
       return existing.id;
     }
     if (input.maxDevices !== null && input.maxDevices >= 1) {
@@ -597,16 +603,14 @@ export class InMemoryIdentity
       .filter((device) => device.userId === userId && device.status === 'ACTIVE')
       .sort(
         (a, b) =>
-          (b.lastSeenAt?.getTime() ?? 0) - (a.lastSeenAt?.getTime() ?? 0) ||
-          b.createdAt.getTime() - a.createdAt.getTime(),
+          a.createdAt.getTime() - b.createdAt.getTime() ||
+          (a.lastSeenAt?.getTime() ?? 0) - (b.lastSeenAt?.getTime() ?? 0),
       );
     if (active.length <= limit) {
       return 0;
     }
     const keep = new Set<string>();
-    if (keepDeviceId && limit > 0) {
-      keep.add(keepDeviceId);
-    }
+    void keepDeviceId;
     for (const row of active) {
       if (keep.size >= limit) {
         break;

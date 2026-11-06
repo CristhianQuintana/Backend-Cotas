@@ -54,7 +54,8 @@ export const PublicMessages = {
   internal: 'No se pudo completar la operación.',
   mfaAlreadyEnabled: 'La verificación en dos pasos ya está activa.',
   databaseUnavailable: 'La base de datos no está disponible.',
-  deviceLimit: 'Se alcanzó el límite de dispositivos para esta cuenta. Revoca uno para continuar.',
+  deviceLimit:
+    'Se alcanzó el límite de dispositivos. Se conservan los aparatos más antiguos; cierra uno desde la app o usa un dispositivo ya registrado.',
   deviceLinkInvalid: 'El código QR no es válido o ya no está pendiente.',
   deviceLinkExpired: 'El código QR expiró. Genere uno nuevo en el televisor.',
   deviceLinkConsumed: 'El código QR ya fue utilizado.',

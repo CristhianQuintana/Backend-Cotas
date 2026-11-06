@@ -39,7 +39,7 @@ El cupo es `maxConnections` de XUI, aplicado sobre la tabla `devices` de COTAS (
 
 - Aparato ya registrado → reutiliza el slot y actualiza `lastSeenAt`.
 - Cupo lleno y aparato **nuevo** → `403` / `DEVICE_LIMIT` (en `details` vienen `used` y `limit`).
-- Si el cupo **baja** (p. ej. de 10 a 5) → en el siguiente login o al consultar suscripción se revocan los más antiguos (`lastSeenAt`) y se cierran sus sesiones; se conserva el aparato actual si ya estaba registrado.
+- Si el cupo **baja** (p. ej. de 5 a 3) → se **conservan los dispositivos más antiguos** (`createdAt`) y se revocan los más nuevos (cierran sesión). Un aparato nuevo que intente entrar recibe `403` `DEVICE_LIMIT` con mensaje claro.
 - **Logout** o sesión expirada → el dispositivo queda libre (ya no cuenta en el cupo).
 - En login / `GET /devices` se revocan “fantasmas” (`ACTIVE` sin sesión viva).
 - En TV/móvil conviene enviar siempre el mismo `deviceId` estable.
@@ -56,7 +56,7 @@ Personal del panel (admin/operador con contraseña local) **no** usa cupo ni exi
 
 **No** usar `activeConnections` / `maxConnections` de XUI (streams) para ese texto.
 
-Si el cupo está lleno y entra un **nuevo** `deviceId`, el backend **desplaza** el aparato con `lastSeenAt` más antiguo (cierra sus sesiones) para no dejar la cuenta bloqueada por logins abandonados.
+Si el cupo está lleno y entra un **nuevo** `deviceId` por login con clave, el backend libera hueco cerrando un aparato **más nuevo** entre los existentes (los antiguos se priorizan). En approve QR el cupo lleno sigue siendo `DEVICE_LIMIT` sin desplazar.
 
 ### Login TV por QR (device link)
 

@@ -136,7 +136,7 @@ describe('identidad', () => {
     expect(identity.users.find((user) => user.username === 'linea.nueva')?.role).toBe('CUSTOMER');
   });
 
-  it('acepta login IPTV sin deviceId (compat) y desplaza el aparato más viejo si el cupo está lleno', async () => {
+  it('acepta login IPTV sin deviceId (compat) y desplaza un aparato nuevo si el cupo está lleno', async () => {
     const { identity, login, xui } = setup();
     xui.line.maxConnections = 2;
     xui.lines.set('viewer.demo', 'correct-horse-battery');
@@ -162,7 +162,7 @@ describe('identidad', () => {
       platform: 'tv',
       meta,
     });
-    // 3.er aparato distinto: libera el menos reciente y entra (no bloquea TV/móvil).
+    // 3.er aparato: se conservan los más antiguos; el más nuevo previo cede el hueco.
     const third = await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
@@ -173,7 +173,7 @@ describe('identidad', () => {
     expect(third.type).toBe('authenticated');
     expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(2);
 
-    // Re-login del mismo aparato no consume un slot extra.
+    // Re-login del aparato antiguo (deviceB) no consume un slot extra.
     const again = await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
@@ -185,7 +185,7 @@ describe('identidad', () => {
     expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(2);
   });
 
-  it('si baja maxConnections, al re-login cierra los dispositivos más viejos y conserva el actual', async () => {
+  it('si baja maxConnections, se conservan los dispositivos más antiguos', async () => {
     const { identity, login, xui } = setup();
     xui.line.maxConnections = 3;
     xui.lines.set('viewer.demo', 'correct-horse-battery');
@@ -226,18 +226,27 @@ describe('identidad', () => {
 
     xui.line.maxConnections = 1;
     clock.now = () => new Date('2026-10-19T12:30:00.000Z');
+    // El más antiguo (A) puede entrar; el más nuevo (C) recibe DEVICE_LIMIT.
     await login.execute({
       username: 'viewer.demo',
       password: 'correct-horse-battery',
       deviceId: deviceA,
       meta,
     });
-
     const active = identity.devices.filter((d) => d.status === 'ACTIVE');
     expect(active).toHaveLength(1);
     expect(active[0]?.deviceIdentifierHash).toBe(
       createHash('sha256').update(deviceA).digest('hex'),
     );
+
+    await expect(
+      login.execute({
+        username: 'viewer.demo',
+        password: 'correct-horse-battery',
+        deviceId: deviceC,
+        meta,
+      }),
+    ).rejects.toThrow(PublicMessages.deviceLimit);
   });
 
   it('libera slots fantasma (ACTIVE sin sesión viva) para permitir login en TV', async () => {

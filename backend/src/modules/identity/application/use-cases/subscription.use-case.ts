@@ -37,7 +37,8 @@ export class GetSubscriptionUseCase {
           status: line.status,
         };
         await this.lines.saveLineSnapshot(user.id, snapshot, now);
-        await this.lines.enforceDeviceQuota(user.id, line.maxConnections, now, user.deviceId);
+        // Al bajar el cupo: se conservan los dispositivos más antiguos; los nuevos se cierran.
+        await this.lines.enforceDeviceQuota(user.id, line.maxConnections, now, null);
         const devices = await this.lines.listDevices(user.id, user.deviceId);
         const maxDevices = devices.limit ?? line.maxConnections;
         return {

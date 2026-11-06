@@ -51,7 +51,7 @@ export interface DeviceRegistrationInput {
   now: Date;
   /**
    * Cupo lleno + aparato nuevo:
-   * - `displace` (default, login clave): cierra el menos reciente.
+   * - `displace` (default, login clave): libera hueco cerrando un aparato más nuevo (los antiguos se priorizan).
    * - `reject` (QR approve): 403 DEVICE_LIMIT para que el móvil elija qué revocar.
    */
   onLimit?: 'displace' | 'reject';
@@ -207,8 +207,8 @@ export interface LineAccess {
     now: Date,
   ): Promise<void>;
   /**
-   * Registra o reutiliza un dispositivo. Si el cupo está lleno y es aparato nuevo → error.
-   * Si el cupo bajó, revoca los más antiguos (conserva el actual si ya existía).
+   * Registra o reutiliza un dispositivo.
+   * Si el cupo bajó, se conservan los más antiguos (`createdAt`); los más nuevos reciben DEVICE_LIMIT.
    */
   claimDeviceSlot(input: DeviceRegistrationInput): Promise<string>;
   listDevices(userId: string, currentDeviceId: string | null): Promise<DeviceQuotaView>;
