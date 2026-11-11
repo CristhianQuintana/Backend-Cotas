@@ -11,6 +11,7 @@ import { CatalogUseCase, toCatalogGridItem } from '../../application/catalog.use
 import { applyCatalogCacheHeaders } from './catalog-http-cache';
 import {
   CatalogQueryDto,
+  CatalogAnnouncementsQueryDto,
   EpgBatchQueryDto,
   EpgQueryDto,
   EpgSearchQueryDto,
@@ -59,8 +60,18 @@ export class CatalogController {
   }
 
   @Get('announcements')
-  listAnnouncements(@Query() query: CatalogQueryDto) {
-    return this.announcements.list(query.page ?? 1, query.limit ?? 20);
+  async listAnnouncements(@Query() query: CatalogAnnouncementsQueryDto, @Req() req: Request) {
+    const result = await this.announcements.list({
+      limit: query.limit ?? 20,
+      page: query.page,
+      type: query.type,
+      since: query.since,
+      cursor: query.cursor,
+    });
+    return {
+      ...result,
+      items: result.items.map((item) => this.signItem(item, ['posterUrl'], req)),
+    };
   }
 
   @Get('live/categories')

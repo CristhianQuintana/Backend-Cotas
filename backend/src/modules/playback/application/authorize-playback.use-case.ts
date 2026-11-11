@@ -73,10 +73,18 @@ export class AuthorizePlaybackUseCase {
       const upstream =
         this.config.nodeEnv === 'test'
           ? reference.streamUrl
-          : await resolveStreamUpstream(reference.streamUrl, lanHost);
-      const ticket = this.tickets.issue({
+          : await resolveStreamUpstream(
+              reference.streamUrl,
+              lanHost,
+              this.config.xuiAllowedStreamHosts,
+            );
+      const ticket = await this.tickets.issue({
         upstreamUrl: upstream,
         protocolHint: reference.protocolHint,
+        userId: user.id,
+        deviceId: user.deviceId,
+        streamId: reference.streamId,
+        contentType: reference.contentType,
       });
       proxied = {
         ...reference,

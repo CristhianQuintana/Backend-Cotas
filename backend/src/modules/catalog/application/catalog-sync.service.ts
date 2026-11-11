@@ -7,7 +7,6 @@ import {
   type XuiSeriesSummary,
   type XuiVodStream,
 } from '../../integrations/xui/domain/models';
-import { FcmPushService } from '../../notifications/fcm-push.service';
 import { CATALOG_CACHE, catalogCacheKey, type CatalogCache } from '../domain/catalog-cache';
 import { CatalogAnnouncementsService } from './catalog-announcements.service';
 
@@ -31,7 +30,6 @@ export class CatalogSyncService {
     @Inject(CATALOG_CACHE) private readonly cache: CatalogCache,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Optional() private readonly announcements?: CatalogAnnouncementsService,
-    @Optional() private readonly push?: FcmPushService,
   ) {}
 
   async syncProbeCatalog(): Promise<{
@@ -53,19 +51,58 @@ export class CatalogSyncService {
       throw new Error('La línea de sonda XUI no autenticó durante la sincronización.');
     }
 
-    let announcementCount = 0;
+    const fetched: Partial<Record<CatalogSyncResource, unknown>> = {};
     for (const resource of LIST_RESOURCES) {
       const items = await this.fetchResource(resource, credentials);
+      fetched[resource] = items;
+      resources[resource] = Array.isArray(items) ? items.length : 0;
+    }
+
+    const series = fetched.series as XuiSeriesSummary[];
+    const details = await mapConcurrent(
+      series,
+      Math.min(4, Math.max(1, this.config.catalogSyncConcurrency)),
+      (item) => this.xui.getSeriesInfo(item.id, credentials),
+    );
+    const seriesDetails = new Map(details.map((item) => [item.id, item]));
+    const episodes = details.flatMap((detail) =>
+      detail.episodes.map((episode) => ({
+        id: episode.id,
+        seriesId: detail.id,
+        name: episode.name,
+        description: episode.plot,
+        posterUrl: episode.posterUrl ?? detail.posterUrl,
+        seasonNumber: episode.seasonNumber,
+        episodeNumber: episode.episodeNumber,
+        publishedAt: null,
+      })),
+    );
+    resources.episodes = episodes.length;
+
+    // Commit cache and announcement snapshots only after every required XUI call succeeded.
+    for (const resource of LIST_RESOURCES) {
       await this.cache.setJson(
         catalogCacheKey(scope, resource),
-        items,
+        fetched[resource],
         this.config.catalogCacheTtlSeconds,
       );
-      resources[resource] = Array.isArray(items) ? items.length : 0;
-      if (resource === 'vod-streams' || resource === 'series') {
-        announcementCount += await this.publishNewContent(resource, items);
-      }
     }
+    const announcementCount = this.announcements
+      ? await this.announcements.detectAndPersist({
+          movies: (fetched['vod-streams'] as XuiVodStream[]).map((item) => ({
+            id: item.id,
+            name: item.name,
+            posterUrl: item.posterUrl,
+          })),
+          series: series.map((item) => ({
+            id: item.id,
+            name: item.name,
+            posterUrl: item.posterUrl,
+            description: seriesDetails.get(item.id)?.plot,
+          })),
+          episodes,
+        })
+      : 0;
     // Invalida bootstrap Home para que el próximo GET lo reconstruya con datos frescos.
     await this.cache.del(catalogCacheKey(scope, 'home:v1'));
 
@@ -74,27 +111,6 @@ export class CatalogSyncService {
       `Catálogo XUI sincronizado en ${durationMs}ms (${Object.values(resources).join('/')}; anuncios=${announcementCount}).`,
     );
     return { scope, resources, durationMs, announcements: announcementCount };
-  }
-
-  private async publishNewContent(
-    resource: 'vod-streams' | 'series',
-    items: unknown,
-  ): Promise<number> {
-    if (!this.announcements || !Array.isArray(items)) {
-      return 0;
-    }
-    const kind = resource === 'vod-streams' ? 'vod' : 'series';
-    const mapped =
-      kind === 'vod'
-        ? (items as XuiVodStream[]).map((item) => ({ id: item.id, name: item.name }))
-        : (items as XuiSeriesSummary[]).map((item) => ({ id: item.id, name: item.name }));
-    const created = await this.announcements.detectAndPersist(kind, mapped);
-    if (created.length === 0 || !this.push) {
-      return created.length;
-    }
-    const tokens = await this.announcements.listActivePushTokens();
-    await this.push.notifyNewContent(created, tokens);
-    return created.length;
   }
 
   private fetchResource(resource: CatalogSyncResource, credentials: XuiCredentials) {
@@ -117,4 +133,22 @@ export class CatalogSyncService {
       }
     }
   }
+}
+
+async function mapConcurrent<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+) {
+  const result = new Array<R>(items.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor++;
+        result[index] = await fn(items[index]!);
+      }
+    }),
+  );
+  return result;
 }

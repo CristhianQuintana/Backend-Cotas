@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   IsInt,
   IsOptional,
+  IsIn,
   IsString,
   Matches,
   Max,
@@ -37,6 +38,43 @@ export class CatalogQueryDto {
   @IsString()
   @MaxLength(80)
   search?: string;
+}
+
+export class CatalogAnnouncementsQueryDto {
+  @ApiPropertyOptional({
+    description: 'Compatibilidad con clientes antiguos; usar cursor en nuevas integraciones.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  page?: number;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ enum: ['MOVIE', 'SERIES', 'EPISODE'] })
+  @IsOptional()
+  @IsIn(['MOVIE', 'SERIES', 'EPISODE'])
+  type?: 'MOVIE' | 'SERIES' | 'EPISODE';
+
+  @ApiPropertyOptional({ description: 'Cursor de sincronización devuelto como syncCursor.' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,128}$/u)
+  since?: string;
+
+  @ApiPropertyOptional({ description: 'Cursor de continuación devuelto como nextCursor.' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,128}$/u)
+  cursor?: string;
 }
 
 export class StreamIdParamDto {

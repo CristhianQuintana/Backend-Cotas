@@ -327,15 +327,24 @@ describe('API COTAS', () => {
     await http()
       .put('/api/v1/devices/push-token')
       .set('Authorization', `Bearer ${token}`)
-      .send({ token: 'fcm_test_token_' + 'x'.repeat(24), platform: 'android' })
+      .send({
+        token: 'fcm_test_token_' + 'x'.repeat(24),
+        platform: 'android',
+        appVersion: '1.2.3+4',
+        deviceModel: 'Google Pixel 9',
+      })
       .expect(204);
     expect(identity.pushTokens.size).toBe(1);
 
     const announcements = await http()
-      .get('/api/v1/catalog/announcements?page=1&limit=10')
+      .get('/api/v1/catalog/announcements?limit=10&type=EPISODE&since=MA')
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(announcements.body).toMatchObject({ page: 1, limit: 10, total: 0, items: [] });
+    await http()
+      .get('/api/v1/catalog/announcements?limit=101')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
   });
 
   it('separa autenticación de autorización y evita IDOR de sesiones', async () => {
@@ -371,8 +380,30 @@ describe('API COTAS', () => {
       .expect(200);
   });
 
-  it('autentica al operador solo con usuario y contraseña, consulta dependencias y revoca la sesión', async () => {
-    const logged = await login('operator.demo');
+  it('exige MFA al operador: enrollment + TOTP, consulta dependencias y revoca la sesión', async () => {
+    const first = await login('operator.demo');
+    expect(first.body.type).toBe('mfa_enrollment_required');
+    const enrollmentToken = first.body.enrollmentToken as string;
+    const setup = await http()
+      .post('/api/v1/auth/mfa/setup')
+      .set('Authorization', `Bearer ${enrollmentToken}`)
+      .expect(200);
+    const { TOTP, Secret } = await import('otpauth');
+    const totp = new TOTP({
+      secret: Secret.fromBase32(setup.body.secret as string),
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+    });
+    await http()
+      .post('/api/v1/auth/mfa/confirm')
+      .set('Authorization', `Bearer ${enrollmentToken}`)
+      .send({ totpCode: totp.generate() })
+      .expect(200);
+    const logged = await http()
+      .post('/api/v1/auth/login')
+      .send({ username: 'operator.demo', password, totpCode: totp.generate() })
+      .expect(200);
     expect(logged.body.type).toBe('authenticated');
     const token = logged.body.accessToken as string;
     const dependencies = await http()

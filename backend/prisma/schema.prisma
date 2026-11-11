@@ -283,15 +283,32 @@ model CatalogContentSnapshot {
 }
 
 model CatalogAnnouncement {
-  id        String   @id @db.Uuid
-  kind      String   @db.VarChar(16)
-  title     String   @db.VarChar(240)
-  contentId String   @map("content_id") @db.VarChar(64)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id            String    @id @db.Uuid
+  sequence      BigInt    @unique
+  dedupeKey     String    @unique @map("dedupe_key") @db.VarChar(160)
+  kind          String    @db.VarChar(16)
+  title         String    @db.VarChar(240)
+  contentId     String    @map("content_id") @db.VarChar(64)
+  seriesId      String?   @map("series_id") @db.VarChar(64)
+  seasonNumber  Int?      @map("season_number")
+  episodeNumber Int?      @map("episode_number")
+  description   String?   @db.Text
+  posterUrl     String?   @map("poster_url") @db.Text
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(3)
+  available     Boolean   @default(true)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([createdAt])
   @@index([kind, createdAt])
+  @@index([available, sequence])
   @@map("catalog_announcements")
+}
+
+model CatalogAnnouncementCursor {
+  id    Int    @id @default(1)
+  value BigInt @default(0)
+
+  @@map("catalog_announcement_cursors")
 }
 
 model AuditLog {

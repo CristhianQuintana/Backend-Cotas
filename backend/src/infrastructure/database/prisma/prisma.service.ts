@@ -24,12 +24,22 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$disconnect();
   }
 
-  async isDatabaseReachable(): Promise<boolean> {
+  async isDatabaseReachable(timeoutMs = 2_000): Promise<boolean> {
+    let timeout: NodeJS.Timeout | undefined;
     try {
-      await this.$queryRaw`SELECT 1`;
+      await Promise.race([
+        this.$queryRaw`SELECT 1`,
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('db_ready_timeout')), timeoutMs);
+        }),
+      ]);
       return true;
     } catch {
       return false;
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
     }
   }
 }

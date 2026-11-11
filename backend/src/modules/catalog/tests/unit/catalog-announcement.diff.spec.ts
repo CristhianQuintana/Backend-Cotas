@@ -10,9 +10,9 @@ describe('diffNewCatalogItems', () => {
       ],
       ['1'],
     );
-    expect(result.nextIds).toEqual(['1', '2']);
-    expect(result.announcements).toEqual([
-      { kind: 'vod', contentId: '2', title: 'Nueva película' },
+    expect(result.nextIds).toEqual(['vod::1', 'vod::2']);
+    expect(result.announcements).toMatchObject([
+      { kind: 'vod', contentId: '2', title: 'Nueva película', dedupeKey: 'vod::2' },
     ]);
   });
 
@@ -25,6 +25,26 @@ describe('diffNewCatalogItems', () => {
   it('sin cambios no genera anuncios', () => {
     const result = diffNewCatalogItems('vod', [{ id: '1', name: 'Misma' }], ['1']);
     expect(result.announcements).toEqual([]);
-    expect(result.nextIds).toEqual(['1']);
+    expect(result.nextIds).toEqual(['vod::1']);
+  });
+
+  it('identifica episodios por serie y mantiene sus metadatos', () => {
+    const result = diffNewCatalogItems(
+      'episode',
+      [
+        { id: '7', seriesId: '20', name: 'Capítulo 1', description: 'Trama', posterUrl: '/p.jpg' },
+        { id: '7', seriesId: '21', name: 'Capítulo 1 otra serie' },
+      ],
+      [],
+    );
+    expect(result.announcements).toHaveLength(2);
+    expect(result.announcements[0]).toMatchObject({
+      kind: 'episode',
+      contentId: '7',
+      seriesId: '20',
+      description: 'Trama',
+      posterUrl: '/p.jpg',
+    });
+    expect(result.nextIds).toEqual(['episode:20:7', 'episode:21:7']);
   });
 });

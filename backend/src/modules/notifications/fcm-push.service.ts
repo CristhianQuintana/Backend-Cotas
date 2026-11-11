@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { SignJWT, importPKCS8 } from 'jose';
 import { APP_CONFIG, type AppConfig } from '../../config/app-config';
-import type { CatalogAnnouncementDraft } from '../catalog/application/catalog-announcement.diff';
 
 @Injectable()
 export class FcmPushService {
@@ -9,45 +8,6 @@ export class FcmPushService {
   private accessToken: { value: string; expiresAtMs: number } | null = null;
 
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
-
-  async notifyNewContent(
-    announcements: readonly CatalogAnnouncementDraft[],
-    tokens: readonly string[],
-  ): Promise<void> {
-    if (!this.config.fcmEnabled || announcements.length === 0 || tokens.length === 0) {
-      return;
-    }
-    if (!this.config.fcmProjectId || !this.config.fcmClientEmail || !this.config.fcmPrivateKey) {
-      this.logger.warn('FCM habilitado sin credenciales completas; se omiten envíos.');
-      return;
-    }
-
-    const title =
-      announcements.length === 1
-        ? announcements[0]!.kind === 'vod'
-          ? 'Nueva película'
-          : 'Nueva serie'
-        : 'Novedades en el catálogo';
-    const body =
-      announcements.length === 1
-        ? announcements[0]!.title
-        : `${announcements.length} títulos nuevos disponibles`;
-
-    const bearer = await this.getAccessToken();
-    for (const token of tokens) {
-      try {
-        await this.send(bearer, token, title, body, {
-          type: 'catalog_announcement',
-          kind: announcements[0]!.kind,
-          contentId: announcements[0]!.contentId,
-        });
-      } catch (error) {
-        this.logger.warn(
-          `FCM falló para un token: ${error instanceof Error ? error.message : 'error'}`,
-        );
-      }
-    }
-  }
 
   /** Avisa a otros aparatos (p. ej. el celular) que un dispositivo cerró sesión. */
   async notifyDeviceSessionClosed(

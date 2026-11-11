@@ -190,42 +190,19 @@ Respuesta `204`. `platform`: `android` | `fcm` | `ios` (APNs dedicado queda fuer
 
 El token se asocia al **dispositivo de sesión** actual (tabla `devices`), distinto de las conexiones XUI.
 
-## Historial de novedades
+La app debe obtener el token con Firebase Messaging y enviar esta petición después del login (con el access token vigente). Si el token no está disponible, la app actual no registra nada. Los campos opcionales `appVersion` y `deviceModel` también son aceptados por el backend para compatibilidad con el cliente Flutter; no se usan para decidir la entrega.
 
-```http
-GET /api/v1/catalog/announcements?page=1&limit=20
-```
+## Novedades de catálogo (notificaciones locales Flutter)
 
-Anuncios creados por el worker cuando aparecen IDs nuevos de VOD o series respecto al snapshot anterior.
+`GET /api/v1/catalog/announcements` requiere el access token Bearer. El worker registra nuevas películas, series y episodios al terminar correctamente todo el inventario XUI. Esta funcionalidad **no envía FCM**; Flutter consulta este endpoint y crea notificaciones locales según preferencias del usuario. Contrato, paginación y cursores: `backend/docs/AUDITORIA/CONTRATO_API_NOTIFICACIONES_FLUTTER.md`.
 
-```json
-{
-  "page": 1,
-  "limit": 20,
-  "total": 1,
-  "items": [
-    {
-      "id": "...",
-      "kind": "vod",
-      "title": "Película nueva",
-      "contentId": "2002",
-      "createdAt": "2026-11-02T19:05:00.000Z"
-    }
-  ]
-}
-```
+Parámetros: `limit` (20 por defecto, máximo 100), `type` (`MOVIE`, `SERIES`, `EPISODE`), `since` (cursor de sincronización completada) y `cursor` (continuación de una página). Para recorrer todas las páginas, conservar `since` y pasar `nextCursor` hasta que sea `null`; solo después guardar `syncCursor` como nuevo `since`. `page` sigue aceptado para clientes anteriores, pero las nuevas integraciones deben usar cursores.
 
-## Push FCM (servidor)
+La respuesta contiene `id`, `type`, `kind` (compatibilidad anterior), `contentId`, título, poster, descripción, fechas, disponibilidad, datos de temporada/episodio, `detailPath`, `hasMore`, `nextCursor` y `syncCursor`. No se debe presentar una notificación de un elemento con `available: false`.
 
-Tras sincronizar `vod-streams` / `series`, el worker:
+### Push FCM de eventos de dispositivo
 
-1. Diff de IDs vs `catalog_content_snapshots`.
-2. Inserta filas en `catalog_announcements` (salvo la primera sincronización, que solo siembra el snapshot).
-3. Si `FCM_ENABLED=true` y hay credenciales, envía notificación HTTP v1 a tokens activos.
-
-Variables (ver `.env.example`): `FCM_ENABLED`, `FCM_PROJECT_ID`, `FCM_CLIENT_EMAIL`, `FCM_PRIVATE_KEY`.
-
-Con FCM deshabilitado, la API de anuncios sigue siendo útil para la UI.
+FCM se conserva solo para eventos de dispositivo como `device_session_closed` y `device_inactive`. Las variables FCM y el registro de token no forman parte de las novedades de catálogo.
 
 ### Push de sesión cerrada / dispositivo inactivo
 

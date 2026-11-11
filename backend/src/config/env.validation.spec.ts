@@ -43,6 +43,9 @@ describe('validateEnv', () => {
     expect(config.databaseUrl).not.toContain('CHANGE_ME');
     expect(config.fcmEnabled).toBe(false);
     expect(config.fcmProjectId).toBeNull();
+    expect(config.playbackTicketTtlSeconds).toBe(900);
+    expect(config.deviceLimitFailsafe).toBe(3);
+    expect(config.playbackProxyMaxConcurrent).toBe(10);
   });
 
   it('falla si falta una variable crítica y no revela el valor', () => {

@@ -146,8 +146,9 @@ export function mapLineStatus(payload: unknown): XuiLineStatus {
     username,
     displayName: named,
     expiresAt: asExpiresAt(info.exp_date),
-    maxConnections: asNonNegativeInt(info.max_connections),
-    activeConnections: asNonNegativeInt(info.active_cons),
+    // XUI puede devolver 100000 (6 dígitos). No usar el helper de 1–5 dígitos.
+    maxConnections: asConnectionCount(info.max_connections),
+    activeConnections: asConnectionCount(info.active_cons),
     isTrial: asOptionalBool(info.is_trial),
   };
 }
@@ -328,12 +329,17 @@ function asExpiresAt(value: unknown): string | null {
   return asIsoFromUnix(value) ?? asIsoFromDateText(typeof value === 'string' ? value : null);
 }
 
-function asNonNegativeInt(value: unknown): number | null {
+/** Conexiones/dispositivos XUI: admite hasta 1e6 (p. ej. líneas de prueba con 100000). */
+function asConnectionCount(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
-    return Math.min(Math.trunc(value), 10_000);
+    return Math.min(Math.trunc(value), 1_000_000);
   }
-  if (typeof value === 'string' && /^[0-9]{1,5}$/u.test(value.trim())) {
-    return Number(value.trim());
+  if (typeof value === 'string' && /^[0-9]{1,7}$/u.test(value.trim())) {
+    const parsed = Number(value.trim());
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return Math.min(parsed, 1_000_000);
   }
   return null;
 }

@@ -11,16 +11,23 @@ import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 import { AUDIT_REPOSITORY, type AuditRepository } from '../../../audit/domain/audit-repository';
 import { isStaffRole, type UserRecord } from '../../domain/models/authenticated-user';
 import type { SessionRecord } from '../../domain/models/session';
+import { resolveDeviceLimit } from '../../domain/device-limit.policy';
 import { XUI_CLIENT, type XuiClient } from '../../../integrations/xui/domain/models';
 import {
   LINE_ACCESS,
+  MFA_CIPHER,
+  MFA_SERVICE,
   PASSWORD_HASHER,
+  RECOVERY_CODE_REPOSITORY,
   SESSION_REPOSITORY,
   TOKEN_SERVICE,
   USER_REPOSITORY,
   type DevicePlatformCode,
   type LineAccess,
+  type MfaSecretCipher,
+  type MfaService,
   type PasswordHasher,
+  type RecoveryCodeRepository,
   type SessionRepository,
   type TokenService,
   type UserRepository,
@@ -37,13 +44,19 @@ export interface LoginCommand {
   meta: RequestMeta;
 }
 
-export type LoginResult = {
-  type: 'authenticated';
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  tokenType: 'Bearer';
-};
+export type LoginResult =
+  | {
+      type: 'authenticated';
+      accessToken: string;
+      refreshToken: string;
+      expiresIn: number;
+      tokenType: 'Bearer';
+    }
+  | {
+      type: 'mfa_enrollment_required';
+      enrollmentToken: string;
+      expiresIn: number;
+    };
 
 @Injectable()
 export class LoginUseCase {
@@ -57,6 +70,9 @@ export class LoginUseCase {
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(XUI_CLIENT) private readonly xui: XuiClient,
     @Inject(LINE_ACCESS) private readonly lines: LineAccess,
+    @Inject(MFA_SERVICE) private readonly mfa: MfaService,
+    @Inject(MFA_CIPHER) private readonly cipher: MfaSecretCipher,
+    @Inject(RECOVERY_CODE_REPOSITORY) private readonly recoveryCodes: RecoveryCodeRepository,
   ) {}
 
   async execute(command: LoginCommand): Promise<LoginResult> {
@@ -85,8 +101,66 @@ export class LoginUseCase {
       await this.failLogin(command.meta, user.id, 'blocked');
     }
 
-    // Panel admin/operador: sin cupo de dispositivos IPTV.
+    if (isStaffRole(user.role)) {
+      if (!user.mfaEnabled) {
+        const enrollmentToken = await this.tokens.signEnrollmentToken(user.id);
+        await this.audit.record({
+          action: 'auth.login',
+          result: 'pending',
+          actorUserId: user.id,
+          correlationId: command.meta.correlationId,
+          ipAddress: command.meta.ipAddress,
+          metadata: { reason: 'mfa_enrollment_required', role: user.role },
+        });
+        return {
+          type: 'mfa_enrollment_required',
+          enrollmentToken,
+          expiresIn: this.config.enrollmentTokenTtlSeconds,
+        };
+      }
+      await this.assertStaffMfa(user, command);
+    }
+
     return this.issueSession(user, command.meta);
+  }
+
+  private async assertStaffMfa(user: UserRecord, command: LoginCommand): Promise<void> {
+    if (command.recoveryCode?.trim()) {
+      const ok = await this.recoveryCodes.consume(
+        user.id,
+        this.tokens.hashToken(command.recoveryCode.trim()),
+        this.clock.now(),
+      );
+      if (!ok) {
+        await this.failLogin(command.meta, user.id, 'mfa_recovery');
+      }
+      await this.audit.record({
+        action: 'auth.mfa_recovery',
+        result: 'success',
+        actorUserId: user.id,
+        correlationId: command.meta.correlationId,
+        ipAddress: command.meta.ipAddress,
+      });
+      return;
+    }
+    if (!command.totpCode?.trim()) {
+      await this.audit.record({
+        action: 'auth.login',
+        result: 'failure',
+        actorUserId: user.id,
+        correlationId: command.meta.correlationId,
+        ipAddress: command.meta.ipAddress,
+        metadata: { reason: 'mfa_required' },
+      });
+      throw new DomainError(ErrorCodes.mfaRequired, 401, PublicMessages.mfaRequired);
+    }
+    if (!user.mfaSecretCiphertext) {
+      await this.failLogin(command.meta, user.id, 'mfa_secret_missing');
+    }
+    const secret = this.cipher.decrypt(user.mfaSecretCiphertext!);
+    if (!this.mfa.verify(secret, command.totpCode.trim())) {
+      await this.failLogin(command.meta, user.id, 'mfa_totp');
+    }
   }
 
   private async loginCustomerLine(username: string, command: LoginCommand): Promise<LoginResult> {
@@ -95,6 +169,8 @@ export class LoginUseCase {
       await this.failLogin(command.meta, null, 'line');
     }
 
+    const maxDevices = resolveDeviceLimit(line.maxConnections, this.config.deviceLimitFailsafe);
+
     const accepted = await this.lines.acceptLine({
       username,
       password: command.password,
@@ -102,7 +178,7 @@ export class LoginUseCase {
       snapshot: {
         displayName: line.displayName ?? username,
         expiresAt: line.expiresAt,
-        maxConnections: line.maxConnections,
+        maxConnections: maxDevices,
         activeConnections: line.activeConnections,
         status: line.status,
       },
@@ -114,7 +190,6 @@ export class LoginUseCase {
       return this.failLogin(command.meta, accepted.user.id, 'staff_via_xui');
     }
 
-    // Compat: sin deviceId se usa huella de User-Agent normalizada (menos “fantasmas” por versiones).
     const clientDeviceId =
       command.deviceId?.trim() || fingerprintFromUserAgent(command.meta.userAgent);
 
@@ -123,7 +198,7 @@ export class LoginUseCase {
       clientDeviceId,
       platform: mapPlatform(command.platform, command.meta.userAgent),
       deviceName: command.deviceName ?? null,
-      maxDevices: line.maxConnections,
+      maxDevices,
       now: this.clock.now(),
     });
 
@@ -134,7 +209,7 @@ export class LoginUseCase {
     user: UserRecord,
     meta: RequestMeta,
     deviceId?: string,
-  ): Promise<LoginResult> {
+  ): Promise<Extract<LoginResult, { type: 'authenticated' }>> {
     const now = this.clock.now();
     const refreshToken = this.tokens.generateRefreshToken();
     const session: SessionRecord = {

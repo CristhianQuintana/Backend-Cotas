@@ -13,7 +13,6 @@ import {
 } from './modules/catalog/infrastructure/catalog-sync.queue';
 import { RedisCatalogCache } from './modules/catalog/infrastructure/redis-catalog.cache';
 import { XuiHttpClient } from './modules/integrations/xui/infrastructure/http/xui-http.client';
-import { FcmPushService } from './modules/notifications/fcm-push.service';
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('CatalogWorker');
@@ -44,8 +43,7 @@ async function bootstrap(): Promise<void> {
     allowedStreamHosts: config.xuiAllowedStreamHosts,
   });
   const announcements = new CatalogAnnouncementsService(prisma);
-  const push = new FcmPushService(config);
-  const sync = new CatalogSyncService(xui, cache, config, announcements, push);
+  const sync = new CatalogSyncService(xui, cache, config, announcements);
   const connection = toBullConnection(config);
   const queue = await scheduleCatalogSync(config, connection);
   const worker = createCatalogSyncWorker(config, connection, sync);

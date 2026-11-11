@@ -24,6 +24,7 @@ describe('identidad', () => {
     accessTokenTtlSeconds: 120,
     refreshTokenTtlSeconds: 3600,
     enrollmentTokenTtlSeconds: 600,
+    deviceLimitFailsafe: 3,
   } as AppConfig;
   const tokens: TokenService = {
     async signAccessToken(claims) {
@@ -53,6 +54,15 @@ describe('identidad', () => {
     },
   };
 
+  const mfa = {
+    generateSecret: () => ({ base32: 'SECRET', otpauthUrl: 'otpauth://test' }),
+    verify: (secret: string, code: string) => secret === 'plain-secret' && code === '123456',
+  };
+  const cipher = {
+    encrypt: (plain: string) => `enc:${plain}`,
+    decrypt: (payload: string) => payload.replace(/^enc:/u, ''),
+  };
+
   function setup() {
     const identity = new InMemoryIdentity();
     const xui = new FakeXui();
@@ -65,6 +75,9 @@ describe('identidad', () => {
       config,
       clock,
       xui,
+      identity,
+      mfa,
+      cipher,
       identity,
     );
     const refresh = new RefreshSessionUseCase(identity, identity, tokens, identity, config, clock);
@@ -305,7 +318,7 @@ describe('identidad', () => {
     expect(identity.devices.filter((d) => d.status === 'ACTIVE')).toHaveLength(1);
   });
 
-  it('autentica personal con contraseña local Argon2 sin MFA', async () => {
+  it('exige enrollment MFA al personal sin segundo factor activado', async () => {
     const { identity, login, xui } = setup();
     xui.lines.set('operador', 'should-not-use-xui');
     addUser(identity, {
@@ -322,8 +335,34 @@ describe('identidad', () => {
       password: 'local-operator-password',
       meta,
     });
+    expect(session.type).toBe('mfa_enrollment_required');
+    if (session.type === 'mfa_enrollment_required') {
+      expect(session.enrollmentToken).toMatch(/^enroll:/u);
+    }
+  });
+
+  it('autentica personal con MFA TOTP válido', async () => {
+    const { identity, login } = setup();
+    addUser(identity, {
+      username: 'admin.mfa',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      passwordHash: 'hash:admin-password',
+      mfaEnabled: true,
+      mfaSecretCiphertext: 'enc:plain-secret',
+    });
+
+    await expect(
+      login.execute({ username: 'admin.mfa', password: 'admin-password', meta }),
+    ).rejects.toBeInstanceOf(DomainError);
+
+    const session = await login.execute({
+      username: 'admin.mfa',
+      password: 'admin-password',
+      totpCode: '123456',
+      meta,
+    });
     expect(session.type).toBe('authenticated');
-    expect(session.accessToken).toContain(':OPERATOR');
   });
 
   it('no usa XUI para operadores y rota el refresh token de clientes', async () => {

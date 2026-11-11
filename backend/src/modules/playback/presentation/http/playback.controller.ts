@@ -9,6 +9,7 @@ import {
   Post,
   Req,
   Res,
+  ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -19,18 +20,26 @@ import { CurrentUser } from '../../../../common/decorators/current-user.decorato
 import { Public } from '../../../../common/decorators/public.decorator';
 import { SensitiveRateLimitGuard } from '../../../../common/guards/sensitive-rate-limit.guard';
 import { requestMeta } from '../../../../common/logging/request-meta';
+import { isAllowedUpstreamUrl } from '../../../../common/utils/allowed-upstream-host';
+import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 import type { AuthenticatedUser } from '../../../identity/domain/models/authenticated-user';
 import { AuthorizePlaybackUseCase } from '../../application/authorize-playback.use-case';
 import { PlaybackMediaTicketStore } from '../../infrastructure/playback-media-ticket.store';
 import { rewritePlaylistForProxy } from '../../infrastructure/resolve-stream-upstream';
 import { AuthorizePlaybackDto } from './dto/authorize-playback.dto';
 
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
+
 @ApiTags('playback')
 @Controller('playback')
 export class PlaybackController {
+  private activeProxies = 0;
+
   constructor(
     @Inject(AuthorizePlaybackUseCase) private readonly authorizePlayback: AuthorizePlaybackUseCase,
     @Inject(PlaybackMediaTicketStore) private readonly tickets: PlaybackMediaTicketStore,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   @ApiBearerAuth()
@@ -56,16 +65,20 @@ export class PlaybackController {
   }
 
   /**
-   * Proxy de media para clientes en la misma LAN.
-   * El ticket es opaco y de corta vida; el player no envía JWT en segmentos HLS.
+   * Proxy de media: ticket opaco de corta vida (Redis cuando está habilitado).
    */
   @Public()
   @Get('media/:ticketId')
-  proxyPlaylist(@Param('ticketId') ticketId: string, @Req() req: Request, @Res() res: Response) {
-    const ticket = this.tickets.get(ticketId);
+  async proxyPlaylist(
+    @Param('ticketId') ticketId: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const ticket = await this.tickets.get(ticketId);
     if (!ticket) {
       throw new NotFoundException();
     }
+    this.acquireProxySlot();
     return pipeUpstream({
       ticketId,
       upstreamUrl: ticket.upstreamUrl,
@@ -73,13 +86,19 @@ export class PlaybackController {
       res,
       publicApiBase: publicApiBaseFromRequest(req),
       rewritePlaylist: ticket.protocolHint === 'hls',
+      allowedHosts: this.config.xuiAllowedStreamHosts,
+      onDone: () => this.releaseProxySlot(),
     });
   }
 
   @Public()
   @Get('media/:ticketId/seg')
-  proxySegment(@Param('ticketId') ticketId: string, @Req() req: Request, @Res() res: Response) {
-    const ticket = this.tickets.get(ticketId);
+  async proxySegment(
+    @Param('ticketId') ticketId: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const ticket = await this.tickets.get(ticketId);
     if (!ticket) {
       throw new NotFoundException();
     }
@@ -99,6 +118,7 @@ export class PlaybackController {
       throw new NotFoundException();
     }
     const upstreamUrl = `${ticket.upstreamOrigin}${path}`;
+    this.acquireProxySlot();
     return pipeUpstream({
       ticketId,
       upstreamUrl,
@@ -106,7 +126,24 @@ export class PlaybackController {
       res,
       publicApiBase: publicApiBaseFromRequest(req),
       rewritePlaylist: false,
+      allowedHosts: this.config.xuiAllowedStreamHosts,
+      onDone: () => this.releaseProxySlot(),
     });
+  }
+
+  private acquireProxySlot(): void {
+    if (this.activeProxies >= this.config.playbackProxyMaxConcurrent) {
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        code: 'PLAYBACK_PROXY_SATURATED',
+        message: 'El proxy de reproducción está saturado. Reintente en unos segundos.',
+      });
+    }
+    this.activeProxies += 1;
+  }
+
+  private releaseProxySlot(): void {
+    this.activeProxies = Math.max(0, this.activeProxies - 1);
   }
 }
 
@@ -130,23 +167,50 @@ function pipeUpstream(input: {
   res: Response;
   publicApiBase: string;
   rewritePlaylist: boolean;
+  allowedHosts: readonly string[];
+  onDone: () => void;
+  hop?: number;
 }): void {
+  const hop = input.hop ?? 0;
+  let finished = false;
+  const done = () => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    input.onDone();
+  };
+  input.res.on('close', done);
+
   let upstream: URL;
   try {
     upstream = new URL(input.upstreamUrl);
   } catch {
+    done();
     input.res.status(502).end();
     return;
   }
   if (upstream.protocol !== 'http:' && upstream.protocol !== 'https:') {
+    done();
     input.res.status(502).end();
     return;
   }
+  if (!isAllowedUpstreamUrl(upstream, input.allowedHosts)) {
+    done();
+    input.res.status(502).end();
+    return;
+  }
+  if (hop > 5) {
+    done();
+    input.res.status(502).end();
+    return;
+  }
+
   const lib = upstream.protocol === 'https:' ? https : http;
+  const agent = upstream.protocol === 'https:' ? httpsAgent : httpAgent;
   const headers: Record<string, string> = {
     'User-Agent': 'COTAS-Playback-Proxy/1.0',
     Accept: input.req.headers.accept || '*/*',
-    Connection: 'close',
   };
   if (typeof input.req.headers.range === 'string') {
     headers.Range = input.req.headers.range;
@@ -159,22 +223,31 @@ function pipeUpstream(input: {
       path: `${upstream.pathname}${upstream.search}`,
       method: 'GET',
       headers,
+      agent,
       timeout: 30000,
     },
     (proxyRes) => {
       const status = proxyRes.statusCode ?? 502;
       if (status >= 300 && status < 400 && proxyRes.headers.location) {
-        // Seguir redirect; si XUI apunta a un host público inaccesible desde el
-        // servidor, conservar el host del upstream que ya resolvió el ticket.
         proxyRes.resume();
         const next = new URL(proxyRes.headers.location, upstream);
-        if (next.hostname !== upstream.hostname) {
+        // Solo seguir si el destino sigue en allowlist; si no, reescribir al host del ticket.
+        if (!isAllowedUpstreamUrl(next, input.allowedHosts)) {
           next.protocol = upstream.protocol;
           next.host = upstream.host;
+        }
+        if (!isAllowedUpstreamUrl(next, input.allowedHosts)) {
+          done();
+          if (!input.res.headersSent) {
+            input.res.status(502).end();
+          }
+          return;
         }
         pipeUpstream({
           ...input,
           upstreamUrl: next.toString(),
+          hop: hop + 1,
+          onDone: done,
         });
         return;
       }
@@ -199,6 +272,13 @@ function pipeUpstream(input: {
           input.res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
           input.res.setHeader('Cache-Control', 'no-store');
           input.res.send(rewritten);
+          done();
+        });
+        proxyRes.on('error', () => {
+          done();
+          if (!input.res.headersSent) {
+            input.res.status(502).end();
+          }
         });
         return;
       }
@@ -218,15 +298,19 @@ function pipeUpstream(input: {
       }
       input.res.setHeader('Cache-Control', 'no-store');
       proxyRes.pipe(input.res);
+      proxyRes.on('end', done);
+      proxyRes.on('error', done);
     },
   );
   proxyReq.on('timeout', () => {
     proxyReq.destroy();
+    done();
     if (!input.res.headersSent) {
       input.res.status(504).end();
     }
   });
   proxyReq.on('error', () => {
+    done();
     if (!input.res.headersSent) {
       input.res.status(502).end();
     }

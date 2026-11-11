@@ -145,6 +145,24 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     3_600,
     604_800,
   );
+  const playbackTicketTtlSeconds = integer(
+    raw.PLAYBACK_TICKET_TTL_SECONDS ?? '900',
+    'PLAYBACK_TICKET_TTL_SECONDS',
+    60,
+    7_200,
+  );
+  const deviceLimitFailsafe = integer(
+    raw.DEVICE_LIMIT_FAILSAFE ?? '3',
+    'DEVICE_LIMIT_FAILSAFE',
+    1,
+    100,
+  );
+  const playbackProxyMaxConcurrent = integer(
+    raw.PLAYBACK_PROXY_MAX_CONCURRENT ?? '10',
+    'PLAYBACK_PROXY_MAX_CONCURRENT',
+    5,
+    500,
+  );
   const catalogSyncIntervalMs = integer(
     raw.CATALOG_SYNC_INTERVAL_MS ?? '300000',
     'CATALOG_SYNC_INTERVAL_MS',
@@ -203,6 +221,9 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     catalogCacheTtlSeconds,
     catalogEpgCacheTtlSeconds,
     mediaAssetTtlSeconds,
+    playbackTicketTtlSeconds,
+    deviceLimitFailsafe,
+    playbackProxyMaxConcurrent,
     catalogSyncIntervalMs,
     catalogSyncConcurrency,
     fcmEnabled,

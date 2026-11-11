@@ -5,8 +5,10 @@ import {
   PublicMessages,
 } from '../../../../common/exceptions/domain-error';
 import { CLOCK, type Clock } from '../../../../common/utils/clock';
+import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 import { XUI_CLIENT, type XuiClient } from '../../../integrations/xui/domain/models';
 import type { AuthenticatedUser } from '../../domain/models/authenticated-user';
+import { resolveDeviceLimit } from '../../domain/device-limit.policy';
 import {
   LINE_ACCESS,
   type LineAccess,
@@ -21,6 +23,7 @@ export class GetSubscriptionUseCase {
     @Inject(LINE_ACCESS) private readonly lines: LineAccess,
     @Inject(XUI_CLIENT) private readonly xui: XuiClient,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async execute(user: AuthenticatedUser): Promise<SubscriptionSnapshot> {
@@ -29,18 +32,21 @@ export class GetSubscriptionUseCase {
       const line = await this.xui.getLineStatus(credentials);
       if (line.authenticated) {
         const now = this.clock.now();
+        const maxConnections = resolveDeviceLimit(
+          line.maxConnections,
+          this.config.deviceLimitFailsafe,
+        );
         const snapshot = {
           displayName: line.displayName ?? credentials.username,
           expiresAt: line.expiresAt,
-          maxConnections: line.maxConnections,
+          maxConnections,
           activeConnections: line.activeConnections,
           status: line.status,
         };
         await this.lines.saveLineSnapshot(user.id, snapshot, now);
-        // Al bajar el cupo: se conservan los dispositivos más antiguos; los nuevos se cierran.
-        await this.lines.enforceDeviceQuota(user.id, line.maxConnections, now, null);
+        await this.lines.enforceDeviceQuota(user.id, maxConnections, now, null);
         const devices = await this.lines.listDevices(user.id, user.deviceId);
-        const maxDevices = devices.limit ?? line.maxConnections;
+        const maxDevices = devices.limit ?? maxConnections;
         return {
           ...snapshot,
           username: line.username ?? credentials.username,
@@ -65,9 +71,13 @@ export class GetSubscriptionUseCase {
       throw new DomainError(ErrorCodes.unauthorized, 401, PublicMessages.unauthorized);
     }
     const devices = await this.lines.listDevices(user.id, user.deviceId);
-    const maxDevices = devices.limit ?? cached.maxConnections;
+    const maxDevices = resolveDeviceLimit(
+      devices.limit ?? cached.maxConnections,
+      this.config.deviceLimitFailsafe,
+    );
     return {
       ...cached,
+      maxConnections: maxDevices,
       maxDevices,
       activeDevices: devices.used,
       devicesUsed: devices.used,

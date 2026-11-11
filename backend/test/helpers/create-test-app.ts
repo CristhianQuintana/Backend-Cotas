@@ -23,14 +23,19 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
   const reminders = new InMemoryAccountRemindersService();
   const databaseUp = options?.databaseUp ?? true;
   const announcements = {
-    async list(page: number, limit: number) {
-      return { page, limit, total: 0, items: [] };
+    async list({ page = 1, limit }: { page?: number; limit: number }) {
+      return {
+        page,
+        limit,
+        total: 0,
+        items: [],
+        hasMore: false,
+        nextCursor: null,
+        syncCursor: 'MA',
+      };
     },
     async detectAndPersist() {
-      return [];
-    },
-    async listActivePushTokens() {
-      return [];
+      return 0;
     },
   };
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })

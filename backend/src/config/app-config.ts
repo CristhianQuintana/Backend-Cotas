@@ -37,6 +37,12 @@ export interface AppConfig {
   catalogEpgCacheTtlSeconds: number;
   /** TTL de firma de `/media/asset` (ventana estable para caché de TV/CDN). */
   mediaAssetTtlSeconds: number;
+  /** TTL de tickets `/playback/media` (segundos). Default corto frente al histórico 6h. */
+  playbackTicketTtlSeconds: number;
+  /** Cupo de dispositivos si XUI no reporta max_connections (nunca ilimitado). */
+  deviceLimitFailsafe: number;
+  /** Máximo de proxies de media concurrentes por proceso (anti-503 por fan-out). */
+  playbackProxyMaxConcurrent: number;
   catalogSyncIntervalMs: number;
   catalogSyncConcurrency: number;
   fcmEnabled: boolean;

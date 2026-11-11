@@ -110,7 +110,7 @@ export function configureHttp(app: INestApplication): void {
   app.enableCors({
     origin: config.corsOrigins,
     credentials: false,
-    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Correlation-Id'],
     maxAge: 600,
   });

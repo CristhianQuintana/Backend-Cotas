@@ -108,7 +108,12 @@ describe('logout libera dispositivo y notifica', () => {
     };
 
     const presence = new DevicePresenceNotifier(identity, clock, push as never);
-    const logout = new LogoutUseCase(identity, identity, presence, clock);
+    const tickets = {
+      async revokeForUser() {
+        return 0;
+      },
+    };
+    const logout = new LogoutUseCase(identity, identity, presence, clock, tickets as never);
 
     const before = await identity.listDevices(user.id, phoneSlot);
     expect(before.used).toBe(2);

@@ -15,6 +15,7 @@ import {
   type SessionRepository,
   type UserRepository,
 } from '../../domain/ports/identity.ports';
+import { PlaybackMediaTicketStore } from '../../../playback/infrastructure/playback-media-ticket.store';
 import { DevicePresenceNotifier } from './device-presence-notifier';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class LogoutUseCase {
     @Inject(LINE_ACCESS) private readonly lines: LineAccess,
     @Inject(DevicePresenceNotifier) private readonly presence: DevicePresenceNotifier,
     @Inject(CLOCK) private readonly clock: Clock,
+    @Inject(PlaybackMediaTicketStore) private readonly tickets: PlaybackMediaTicketStore,
   ) {}
 
   async execute(user: AuthenticatedUser, meta: RequestMeta): Promise<void> {
@@ -52,6 +54,7 @@ export class LogoutUseCase {
       throw new DomainError(ErrorCodes.unauthorized, 401, PublicMessages.unauthorized);
     }
 
+    await this.tickets.revokeForUser(user.id);
     // El dispositivo queda REVOKED (si no hay más sesiones vivas) → avisar al celular.
     await this.presence.notifySessionClosed(user.id, closedDeviceId, deviceName);
   }
@@ -75,8 +78,12 @@ export class GetProfileUseCase {
       this.lines.listDevices(user.id, user.deviceId),
     ]);
 
-    const maxDevices = devices.limit ?? snapshot?.maxConnections ?? null;
     const connectedSessions = devices.used;
+    const maxDevices =
+      devices.limit ??
+      (snapshot?.maxConnections !== null && snapshot?.maxConnections !== undefined
+        ? Number(snapshot.maxConnections)
+        : null);
 
     return {
       id: record.id,

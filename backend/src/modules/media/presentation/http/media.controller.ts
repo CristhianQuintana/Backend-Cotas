@@ -7,6 +7,10 @@ import {
   ErrorCodes,
   PublicMessages,
 } from '../../../../common/exceptions/domain-error';
+import {
+  isAllowedUpstreamHost,
+  isAllowedUpstreamUrl,
+} from '../../../../common/utils/allowed-upstream-host';
 import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 import { shouldProxyMediaHost } from '../../application/public-media-url';
 import { buildSignedMediaUrl, signMedia, signaturesEqual } from '../../application/sign-media-url';
@@ -17,8 +21,7 @@ export class MediaController {
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
 
   /**
-   * Proxy firmado de iconos/pósters XUI. El móvil solo habla con la API COTAS;
-   * el backend descarga desde hosts permitidos (p. ej. panel LAN).
+   * Proxy firmado de iconos/pósters XUI. Cada redirect se revalida contra allowlist.
    */
   @Public()
   @Get('asset')
@@ -51,18 +54,15 @@ export class MediaController {
     if (!isAllowedMediaUpstream(url.hostname, this.config.xuiAllowedStreamHosts)) {
       throw new DomainError(ErrorCodes.playbackRejected, 502, PublicMessages.playbackRejected);
     }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.xuiTimeoutMs);
     try {
-      const upstreamRes = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-        },
-        redirect: 'follow',
-      });
+      const upstreamRes = await fetchAllowed(
+        url,
+        this.config.xuiAllowedStreamHosts,
+        controller.signal,
+      );
       if (!upstreamRes.ok || !upstreamRes.body) {
         throw new DomainError(
           ErrorCodes.dependencyUnavailable,
@@ -76,7 +76,6 @@ export class MediaController {
       }
       res.status(200);
       res.setHeader('Content-Type', contentType);
-      // URL firmada (exp+sig): segura para caché pública en TV/CDN mientras no expire.
       const remainingSec = Math.max(60, Math.floor(exp - Date.now() / 1000));
       res.setHeader(
         'Cache-Control',
@@ -100,6 +99,47 @@ export class MediaController {
       clearTimeout(timer);
     }
   }
+}
+
+async function fetchAllowed(
+  start: URL,
+  allowedHosts: readonly string[],
+  signal: AbortSignal,
+): Promise<globalThis.Response> {
+  let current = start;
+  // The initial private XUI image host is trusted only for this exact origin.
+  // Redirects to other private addresses require an explicit allowlist entry.
+  const trustedPrivateOrigin =
+    shouldProxyMediaHost(start.hostname, allowedHosts) &&
+    !isAllowedUpstreamHost(start.hostname, allowedHosts) &&
+    !isAllowedUpstreamUrl(start, allowedHosts)
+      ? start.origin
+      : null;
+  for (let hop = 0; hop < 5; hop += 1) {
+    if (!isAllowedUpstreamUrl(current, allowedHosts) && current.origin !== trustedPrivateOrigin) {
+      throw new DomainError(ErrorCodes.playbackRejected, 502, PublicMessages.playbackRejected);
+    }
+    const response = await fetch(current, {
+      signal,
+      redirect: 'manual',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      },
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) {
+        throw new DomainError(ErrorCodes.upstreamInvalid, 502, PublicMessages.upstreamInvalid);
+      }
+      await response.body?.cancel();
+      current = new URL(location, current);
+      continue;
+    }
+    return response;
+  }
+  throw new DomainError(ErrorCodes.upstreamInvalid, 502, PublicMessages.upstreamInvalid);
 }
 
 function isAllowedMediaUpstream(hostname: string, allowedHosts: readonly string[]): boolean {

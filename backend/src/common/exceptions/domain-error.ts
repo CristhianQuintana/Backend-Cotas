@@ -27,6 +27,8 @@ export const ErrorCodes = {
   playbackRejected: 'PLAYBACK_REFERENCE_REJECTED',
   internal: 'INTERNAL_ERROR',
   mfaAlreadyEnabled: 'MFA_ALREADY_ENABLED',
+  mfaRequired: 'MFA_REQUIRED',
+  mfaEnrollmentRequired: 'MFA_ENROLLMENT_REQUIRED',
   deviceLimit: 'DEVICE_LIMIT',
   deviceLinkInvalid: 'DEVICE_LINK_INVALID',
   deviceLinkExpired: 'DEVICE_LINK_EXPIRED',
@@ -53,6 +55,8 @@ export const PublicMessages = {
   playbackRejected: 'No se pudo preparar una referencia de reproducción segura.',
   internal: 'No se pudo completar la operación.',
   mfaAlreadyEnabled: 'La verificación en dos pasos ya está activa.',
+  mfaRequired: 'Se requiere el código de verificación en dos pasos.',
+  mfaEnrollmentRequired: 'Debe activar la verificación en dos pasos antes de acceder al panel.',
   databaseUnavailable: 'La base de datos no está disponible.',
   deviceLimit:
     'Se alcanzó el límite de dispositivos. Se conservan los aparatos más antiguos; cierra uno desde la app o usa un dispositivo ya registrado.',

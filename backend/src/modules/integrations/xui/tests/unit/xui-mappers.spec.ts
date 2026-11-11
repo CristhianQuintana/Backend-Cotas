@@ -85,6 +85,17 @@ describe('mapeadores XUI', () => {
     expect(status.displayName).toBe('Cliente Demo');
     expect(status.maxConnections).toBe(3);
     expect(status.activeConnections).toBe(1);
+
+    const high = mapLineStatus({
+      user_info: {
+        auth: 1,
+        status: 'Active',
+        username: '10200000',
+        max_connections: '100000',
+        active_cons: '0',
+      },
+    });
+    expect(high.maxConnections).toBe(100_000);
     expect(status.isTrial).toBe(false);
     expect(status.expiresAt).toBe('2026-12-31T23:59:59.000Z');
     expect(JSON.stringify(status)).not.toContain('secret-line');

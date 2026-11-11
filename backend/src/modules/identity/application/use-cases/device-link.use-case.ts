@@ -12,6 +12,7 @@ import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
 import { AUDIT_REPOSITORY, type AuditRepository } from '../../../audit/domain/audit-repository';
 import type { AuthenticatedUser } from '../../domain/models/authenticated-user';
 import type { SessionRecord } from '../../domain/models/session';
+import { resolveDeviceLimit } from '../../domain/device-limit.policy';
 import {
   DEVICE_LINK_REPOSITORY,
   LINE_ACCESS,
@@ -131,7 +132,10 @@ export class DeviceLinkUseCase {
     }
 
     const snapshot = await this.lines.getSubscriptionSnapshot(user.id);
-    const maxDevices = snapshot?.maxConnections ?? null;
+    const maxDevices = resolveDeviceLimit(
+      snapshot?.maxConnections ?? null,
+      this.config.deviceLimitFailsafe,
+    );
     const deviceName =
       input.deviceName?.trim() || challenge.deviceName || defaultTvName(challenge.platform);
 
@@ -145,13 +149,19 @@ export class DeviceLinkUseCase {
       onLimit: 'reject',
     });
 
-    await this.links.markApproved({
-      codeHash,
-      approverUserId: user.id,
-      deviceId,
-      deviceName,
-      now,
-    });
+    try {
+      // updateMany status=PENDING → solo un approve concurrente gana.
+      await this.links.markApproved({
+        codeHash,
+        approverUserId: user.id,
+        deviceId,
+        deviceName,
+        now,
+      });
+    } catch (error) {
+      await this.lines.revokeDevice(deviceId, user.id, now);
+      throw error;
+    }
 
     await this.audit.record({
       action: 'auth.device_link_approve',

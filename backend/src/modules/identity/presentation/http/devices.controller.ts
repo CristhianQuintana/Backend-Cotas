@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { IsIn, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { CurrentUser } from '../../../../common/decorators/current-user.decorator';
 import {
   DomainError,
@@ -22,6 +22,16 @@ class PushTokenDto {
   @IsString()
   @IsIn(['android', 'fcm', 'ios'])
   platform!: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 64)
+  appVersion?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(1, 120)
+  deviceModel?: string;
 }
 
 class DeviceIdParamDto {

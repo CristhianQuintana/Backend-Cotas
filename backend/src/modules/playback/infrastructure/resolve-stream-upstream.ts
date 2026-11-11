@@ -1,39 +1,56 @@
 import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
+import {
+  assertAllowedUpstreamUrl,
+  isAllowedUpstreamUrl,
+} from '../../../common/utils/allowed-upstream-host';
 
 const MAX_HOPS = 5;
 
 /**
- * Sigue redirects desde el host del panel (LAN) hasta una URL final que el API
- * pueda alcanzar. XUI suele 302 hacia un IP público que desde el propio servidor
- * queda inaccesible (NAT/hairpin o IP de streaming caída); en ese caso se reutiliza
- * el path del Location sobre el host LAN del panel.
+ * Sigue redirects desde el host del panel (LAN) hasta una URL final.
+ * Cada hop se revalida contra la allowlist; no se aceptan destinos fuera de ella.
  */
 export async function resolveStreamUpstream(
   streamUrl: string,
   preferredLanHost: string | null,
+  allowedHosts: readonly string[],
 ): Promise<string> {
   const start = preferredLanHost ? rewriteHost(streamUrl, preferredLanHost) : streamUrl;
+  assertAllowedUpstreamUrl(start, mergeAllow(allowedHosts, preferredLanHost));
   let current = start;
   for (let hop = 0; hop < MAX_HOPS; hop += 1) {
+    assertAllowedUpstreamUrl(current, mergeAllow(allowedHosts, preferredLanHost));
     const result = await headOrGet(current);
     if (result.status >= 300 && result.status < 400 && result.location) {
       const next = new URL(result.location, current);
-      if (preferredLanHost && next.hostname !== preferredLanHost) {
+      const allow = mergeAllow(allowedHosts, preferredLanHost);
+      // Preferir path en host LAN (hairpin NAT) antes de seguir IP públicos allowlisted.
+      if (preferredLanHost && next.hostname !== preferredLanHost.split(':')[0]) {
         const lanCandidate = rewriteHost(next.toString(), preferredLanHost);
+        assertAllowedUpstreamUrl(lanCandidate, allow);
         try {
           const lanResult = await headOrGet(lanCandidate);
           if (lanResult.status >= 200 && lanResult.status < 300) {
             return lanCandidate;
           }
           if (lanResult.status >= 300 && lanResult.status < 400 && lanResult.location) {
-            current = new URL(lanResult.location, lanCandidate).toString();
+            const again = new URL(lanResult.location, lanCandidate);
+            if (!isAllowedUpstreamUrl(again, allow)) {
+              // reescribir otra vez a LAN
+              current = rewriteHost(again.toString(), preferredLanHost);
+              continue;
+            }
+            current = again.toString();
             continue;
           }
         } catch {
-          // Si el path en LAN no responde, se intenta el Location original.
+          // Si LAN falla, solo seguir Location si el host está allowlisted.
         }
+      }
+      if (!isAllowedUpstreamUrl(next, allow)) {
+        throw new Error('upstream_redirect_denied');
       }
       current = next.toString();
       continue;
@@ -44,6 +61,17 @@ export async function resolveStreamUpstream(
     throw new Error(`upstream_status_${result.status}`);
   }
   throw new Error('upstream_redirect_loop');
+}
+
+function mergeAllow(allowedHosts: readonly string[], preferredLanHost: string | null): string[] {
+  const set = new Set(allowedHosts.map((h) => h.trim()).filter(Boolean));
+  if (preferredLanHost) {
+    set.add(preferredLanHost);
+    if (preferredLanHost.includes(':')) {
+      set.add(preferredLanHost.split(':')[0]!);
+    }
+  }
+  return [...set];
 }
 
 /** `host` puede ser `hostname` o `hostname:port` (puerto no estándar del panel). */
@@ -120,19 +148,18 @@ export function rewritePlaylistForProxy(input: {
           return `URI="${toProxySegUrl(endpoint, absolute)}"`;
         });
       }
-      const absolute = new URL(trimmed, playlist).toString();
-      return toProxySegUrl(endpoint, absolute);
+      try {
+        const absolute = new URL(trimmed, playlist).toString();
+        return toProxySegUrl(endpoint, absolute);
+      } catch {
+        return line;
+      }
     })
     .join('\n');
 }
 
-/**
- * Usa query `p=` en lugar de path wildcard: los tokens HLS de XUI son muy largos
- * y el enrutado `/{*path}` terminaba pidiendo mal el upstream (404).
- */
-function toProxySegUrl(endpoint: string, absoluteUrl: string): string {
-  const target = new URL(absoluteUrl);
-  const rest = `${target.pathname}${target.search}`;
-  const path = rest.startsWith('/') ? rest : `/${rest}`;
+function toProxySegUrl(endpoint: string, absolute: string): string {
+  const url = new URL(absolute);
+  const path = `${url.pathname}${url.search}`;
   return `${endpoint}?p=${encodeURIComponent(path)}`;
 }

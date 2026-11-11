@@ -26,6 +26,7 @@ describe('resolveStreamUpstream LAN fallback', () => {
       const resolved = await resolveStreamUpstream(
         'http://192.0.2.9/live/user/pass/1.m3u8',
         lanHost,
+        ['127.0.0.1', lanHost, '192.0.2.9'],
       );
       expect(resolved).toBe(`http://127.0.0.1:${port}/auth/token-xyz`);
     } finally {

@@ -426,7 +426,10 @@ export class PrismaIdentityStore
       }));
       return {
         used: items.length,
-        limit: snapshot?.maxConnections ?? null,
+        limit:
+          snapshot?.maxConnections !== null && snapshot?.maxConnections !== undefined
+            ? snapshot.maxConnections
+            : null,
         inactiveAfterSeconds: DEVICE_INACTIVE_AFTER_SECONDS,
         items,
       };
