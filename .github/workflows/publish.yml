@@ -19,7 +19,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_branch == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -87,7 +87,7 @@ jobs:
             -e POSTGRES_USER=cotas \
             -e POSTGRES_PASSWORD=local_only_dev_password \
             -e POSTGRES_DB=cotas_dev \
-            -e DATABASE_URL=postgresql://cotas:local_only_dev_password@127.0.0.1:5432/cotas_dev \
+            -e DATABASE_URL=postgresql://cotas:local_only_dev_password@host.docker.internal:5432/cotas_dev \
             -e JWT_ACCESS_SECRET=publish-check-jwt-secret-not-a-credential \
             -e JWT_ISSUER=cotas.local \
             -e JWT_AUDIENCE=cotas-api \
