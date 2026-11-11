@@ -1,7 +1,8 @@
 /**
  * Valida hosts de media/playback.
  * Solo permite hostnames/IPs presentes en la allowlist de XUI (LAN autorizada).
- * No abre Internet arbitrario; sí permite destinos internos listados (p. ej. 10.10.0.100).
+ * No abre Internet arbitrario; permite únicamente destinos internos
+ * explícitamente autorizados mediante configuración.
  */
 export function isAllowedUpstreamHost(hostname: string, allowedHosts: readonly string[]): boolean {
   const host = hostname
