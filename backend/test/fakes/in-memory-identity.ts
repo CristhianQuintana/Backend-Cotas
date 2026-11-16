@@ -230,6 +230,17 @@ export class InMemoryIdentity
     return [...unique];
   }
 
+  async clearPushTokenByValue(token: string): Promise<number> {
+    let n = 0;
+    for (const device of this.devices) {
+      if (device.pushToken === token) {
+        device.pushToken = null;
+        n += 1;
+      }
+    }
+    return n;
+  }
+
   async listPushTokens(userId: string, excludeDeviceId?: string | null): Promise<string[]> {
     const unique = new Set<string>();
     for (const device of this.devices) {

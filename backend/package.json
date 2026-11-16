@@ -25,7 +25,11 @@
     "seed": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs prisma/seed.ts",
     "check:env": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/check-env.ts",
     "scan:secrets": "node scripts/scan-secrets.mjs",
-    "openapi:export": "node scripts/export-openapi.mjs"
+    "openapi:export": "node scripts/export-openapi.mjs",
+    "validate:tickets-multi": "node --env-file=.env scripts/validate-multi-instance-tickets.mjs",
+    "validate:load-playback": "node --env-file=.env scripts/load-playback-proxy.mjs",
+    "validate:resilience": "node scripts/validate-resilience.mjs",
+    "smoke:deploy": "node --env-file=.env scripts/smoke-deploy.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.2.0",

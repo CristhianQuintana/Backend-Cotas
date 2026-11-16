@@ -32,9 +32,11 @@
 
 ## SEC-004 — rate limit distribuido
 
-**Causa raíz:** `SensitiveRateLimitGuard` inyectaba `REDIS_CLIENT` que **nunca se proveía** → siempre memoria local.
+**Causa raíz:**
+1. `REDIS_CLIENT` no estaba registrado como provider global.
+2. `SensitiveRateLimitGuard` usaba `@UseGuards` **sin estar en `providers`**, por lo que Nest no inyectaba Redis (`redis === null`) y el fail-closed devolvía 503 falsos en login.
 
-**Solución:** provider Redis + fail-closed en límites sensibles si Redis está habilitado y no disponible.
+**Solución:** `RedisModule` global + guard registrado en providers + reintentos de conexión al arranque. Evidencia: clave `ratelimit:sensitive:*` en Redis tras POST login y IT rate-limit A/B.
 
 ## SEC-003 — deepmerge-ts / Prisma
 

@@ -817,6 +817,18 @@ export class PrismaIdentityStore
     }
   }
 
+  async clearPushTokenByValue(token: string): Promise<number> {
+    try {
+      const updated = await this.prisma.device.updateMany({
+        where: { pushToken: token },
+        data: { pushToken: null, pushPlatform: null },
+      });
+      return updated.count;
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
   private async writeLine(input: AcceptLineInput): Promise<AcceptLineResult> {
     const username = input.username.trim();
     return this.prisma.$transaction(async (tx) => {

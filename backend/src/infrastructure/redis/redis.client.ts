@@ -8,12 +8,12 @@ export function createRedisClient(config: AppConfig): Redis | null {
   if (!config.redisEnabled) {
     return null;
   }
-  const client = new Redis(config.redisUrl, {
+  const client = new Redis(buildRedisUrl(config), {
     maxRetriesPerRequest: null,
     enableReadyCheck: true,
     lazyConnect: true,
-    password: config.redisPassword || undefined,
     connectTimeout: 5_000,
+    // Evita HELLO/AUTH inconsistente cuando la contraseña ya va en la URL.
     retryStrategy(times) {
       if (times > 8) {
         return null;
@@ -25,6 +25,18 @@ export function createRedisClient(config: AppConfig): Redis | null {
     logger.warn(`Redis: ${error instanceof Error ? error.message : 'error'}`);
   });
   return client;
+}
+
+export function buildRedisUrl(config: AppConfig): string {
+  try {
+    const url = new URL(config.redisUrl);
+    if (config.redisPassword && !url.password) {
+      url.password = config.redisPassword;
+    }
+    return url.toString();
+  } catch {
+    return config.redisUrl;
+  }
 }
 
 export async function connectRedis(client: Redis | null): Promise<boolean> {

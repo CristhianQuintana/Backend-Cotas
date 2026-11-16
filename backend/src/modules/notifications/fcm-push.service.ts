@@ -1,13 +1,17 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { SignJWT, importPKCS8 } from 'jose';
 import { APP_CONFIG, type AppConfig } from '../../config/app-config';
+import { LINE_ACCESS, type LineAccess } from '../identity/domain/ports/identity.ports';
 
 @Injectable()
 export class FcmPushService {
   private readonly logger = new Logger(FcmPushService.name);
   private accessToken: { value: string; expiresAtMs: number } | null = null;
 
-  constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
+  constructor(
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Optional() @Inject(LINE_ACCESS) private readonly lines?: LineAccess,
+  ) {}
 
   /** Avisa a otros aparatos (p. ej. el celular) que un dispositivo cerró sesión. */
   async notifyDeviceSessionClosed(
@@ -117,6 +121,13 @@ export class FcmPushService {
         message: {
           token,
           notification: { title, body },
+          android: {
+            priority: 'HIGH',
+            notification: {
+              channelId: 'cotas_catalog',
+              defaultSound: true,
+            },
+          },
           data,
         },
       }),
@@ -124,7 +135,27 @@ export class FcmPushService {
     });
     if (!response.ok) {
       const text = await response.text();
+      if (isUnregisteredToken(response.status, text)) {
+        await this.clearInvalidToken(token);
+        throw new Error(`FCM token inválido: HTTP ${response.status}`);
+      }
       throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+    }
+  }
+
+  private async clearInvalidToken(token: string): Promise<void> {
+    if (!this.lines?.clearPushTokenByValue) {
+      return;
+    }
+    try {
+      const cleared = await this.lines.clearPushTokenByValue(token);
+      if (cleared > 0) {
+        this.logger.warn(`Se invalidaron ${cleared} token(s) FCM obsoletos.`);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo limpiar token FCM inválido: ${error instanceof Error ? error.message : 'error'}`,
+      );
     }
   }
 
@@ -134,17 +165,7 @@ export class FcmPushService {
       return this.accessToken.value;
     }
     const key = await importPKCS8(this.config.fcmPrivateKey!, 'RS256');
-    const assertion = await new SignJWT({
-      scope: 'https://www.googleapis.com/auth/firebase.messaging',
-    })
-      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-      .setIssuer(this.config.fcmClientEmail!)
-      .setSubject(this.config.fcmClientEmail!)
-      .setAudience('https://oauth2.googleapis.com/token')
-      .setIssuedAt(Math.floor(now / 1000))
-      .setExpirationTime(Math.floor(now / 1000) + 3600)
-      .sign(key);
-
+    const assertion = await this.signAssertion(key, now);
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -167,4 +188,30 @@ export class FcmPushService {
     };
     return payload.access_token;
   }
+
+  private async signAssertion(key: CryptoKey, now: number): Promise<string> {
+    return new SignJWT({
+      scope: 'https://www.googleapis.com/auth/firebase.messaging',
+    })
+      .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+      .setIssuer(this.config.fcmClientEmail!)
+      .setSubject(this.config.fcmClientEmail!)
+      .setAudience('https://oauth2.googleapis.com/token')
+      .setIssuedAt(Math.floor(now / 1000))
+      .setExpirationTime(Math.floor(now / 1000) + 3600)
+      .sign(key);
+  }
+}
+
+function isUnregisteredToken(status: number, body: string): boolean {
+  if (status === 404) {
+    return true;
+  }
+  const lower = body.toLowerCase();
+  return (
+    lower.includes('unregistered') ||
+    lower.includes('notfound') ||
+    lower.includes('invalid-argument') ||
+    lower.includes('registration-token-not-registered')
+  );
 }

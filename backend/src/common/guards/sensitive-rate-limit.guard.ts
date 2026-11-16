@@ -13,7 +13,7 @@ export class SensitiveRateLimitGuard implements CanActivate {
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Optional() @Inject(REDIS_CLIENT) private readonly redis: Redis | null = null,
+    @Optional() @Inject(REDIS_CLIENT) private readonly redis: Redis | null,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

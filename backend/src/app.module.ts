@@ -5,7 +5,7 @@ import { AppConfigModule } from './config/config.module';
 import { APP_CONFIG, type AppConfig } from './config/app-config';
 import { CLOCK, SystemClock } from './common/utils/clock';
 import { PrismaService } from './infrastructure/database/prisma/prisma.service';
-import { redisClientProvider } from './infrastructure/redis/redis.provider';
+import { RedisModule } from './infrastructure/redis/redis.module';
 import { AuditController } from './modules/audit/presentation/http/audit.controller';
 import { ListAuditUseCase } from './modules/audit/application/list-audit.use-case';
 import { PrismaAuditRepository } from './modules/audit/infrastructure/prisma-audit.repository';
@@ -25,6 +25,7 @@ import { HealthController } from './modules/health/health.controller';
 import { HealthService } from './modules/health/health.service';
 import { XuiHttpClient } from './modules/integrations/xui/infrastructure/http/xui-http.client';
 import { XUI_CLIENT } from './modules/integrations/xui/domain/models';
+import { SensitiveRateLimitGuard } from './common/guards/sensitive-rate-limit.guard';
 import { AccessTokenGuard } from './modules/identity/presentation/guards/access-token.guard';
 import { RolesGuard } from './modules/identity/presentation/guards/roles.guard';
 import { IdentityController } from './modules/identity/presentation/http/identity.controller';
@@ -78,6 +79,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
 @Module({
   imports: [
     AppConfigModule,
+    RedisModule,
     ThrottlerModule.forRootAsync({
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig) => ({
@@ -102,7 +104,6 @@ import { MediaController } from './modules/media/presentation/http/media.control
   ],
   providers: [
     PrismaService,
-    redisClientProvider,
     PrismaIdentityStore,
     { provide: USER_REPOSITORY, useExisting: PrismaIdentityStore },
     { provide: SESSION_REPOSITORY, useExisting: PrismaIdentityStore },
@@ -167,6 +168,8 @@ import { MediaController } from './modules/media/presentation/http/media.control
     AuthorizePlaybackUseCase,
     ListAuditUseCase,
     HealthService,
+    // Debe estar en providers para que REDIS_CLIENT se inyecte (si no, rate-limit queda null).
+    SensitiveRateLimitGuard,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AccessTokenGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

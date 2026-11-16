@@ -16,15 +16,22 @@ export const redisClientProvider: Provider = {
     if (!client) {
       return null;
     }
-    const ready = await connectRedis(client);
-    if (!ready) {
-      try {
-        client.disconnect();
-      } catch {
-        /* ignore */
+    // Reintentos cortos: evita null silencioso si Redis aún no acepta AUTH al arrancar.
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const ready = await connectRedis(client);
+      if (ready) {
+        return client;
       }
-      return null;
+      await new Promise((r) => setTimeout(r, attempt * 400));
     }
-    return client;
+    if (config.nodeEnv === 'production' && config.redisEnabled) {
+      throw new Error('REDIS_ENABLED=true pero Redis no está disponible al iniciar.');
+    }
+    try {
+      client.disconnect();
+    } catch {
+      /* ignore */
+    }
+    return null;
   },
 };
