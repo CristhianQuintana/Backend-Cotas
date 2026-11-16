@@ -32,9 +32,9 @@ La prueba unitaria del payload confirma el mensaje construido por el código, no
 | FUNC-003 | PASS | 401 | GET /auth/me sin Bearer | — | |
 | FUNC-004 | PASS | 401 | login usuario inexistente | — | |
 | FUNC-005 | PASS | 200 type=authenticated expiresIn=900 | login A | — | sin leak LAN/player_api en body |
-| FUNC-006 | PASS | 200 role=CUSTOMER status=ACTIVE | /auth/me | CODE-003 | `maxDevices=null`; connectedSessions≥13 |
-| FUNC-007 | PASS | 200 source=live activeConnections=0 | /account/subscription | CODE-003 | `maxConnections=null` en A |
-| FUNC-008 | PASS | 200 used≈13–14 presence=online inactiveAfter=300 | /devices | CODE-003 | `limit` null en A |
+| FUNC-006 | PASS | 200 role=CUSTOMER status=ACTIVE | /auth/me | — | **16-nov:** `maxDevices=10000` |
+| FUNC-007 | PASS | 200 source=live activeConnections=0 | /account/subscription | — | **16-nov:** `maxConnections=10000` |
+| FUNC-008 | PASS | 200 used/limit con presence | /devices | — | **16-nov:** used=7–8 limit=10000 |
 | FUNC-009 | PASS | 204 | heartbeat con access vigente | — | 401 si se usa token post-refresh/logout |
 | FUNC-010 | PASS | 200 ~26765 bytes | /catalog/home | — | |
 | FUNC-011 | PASS | 200 | live/categories | — | |
@@ -49,6 +49,7 @@ La prueba unitaria del payload confirma el mensaje construido por el código, no
 | FUNC-020 | PASS | 401 | admin/users | — | |
 | FUNC-021 | PASS | 400 | pageSize no es `limit` | — | contrato usa `limit` |
 | FUNC-022 | PASS | 200 | refresh A | — | invalida uso posterior del access viejo |
+| FUNC-023 | PASS | 200 items MOVIE + syncCursor | announcements?limit=5 | — | **16-nov** contrato notificaciones |
 
 ---
 
@@ -67,6 +68,6 @@ La prueba unitaria del payload confirma el mensaje construido por el código, no
 
 | PASS | FAIL | BLOCKED | NOT RUN |
 | --- | --- | --- | --- |
-| 21 | 0 | 1 (LAN `10.10.0.31`) | 1 (QR E2E tokens TV completo; approve-at-limit sí PASS) |
+| 22 | 0 | 1 (LAN directa) | 1 (QR E2E TV+móvil completo) |
 
-**Conclusión:** Flujos críticos login → catálogo → authorize → proxy HLS → logout **funcionan**. Cupo B **confirmado** (15/15 + 403 DEVICE_LIMIT en QR approve). Hallazgo relevante: **Cuenta A sin tope** (`limit=null`, used≥16) — CODE-003.
+**Conclusión (16-nov):** Flujos críticos OK. Cupo A **10000** expuesto. Cupo B 15/15. Anuncios de catálogo disponibles para Flutter. Capacidad media y tickets intermitentes siguen abiertos (ver rendimiento).

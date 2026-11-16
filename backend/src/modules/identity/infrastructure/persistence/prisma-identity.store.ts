@@ -799,6 +799,24 @@ export class PrismaIdentityStore
     }
   }
 
+  async listAllActivePushTokens(): Promise<string[]> {
+    try {
+      const rows = await this.prisma.device.findMany({
+        where: { status: 'ACTIVE', pushToken: { not: null } },
+        select: { pushToken: true },
+      });
+      const unique = new Set<string>();
+      for (const row of rows) {
+        if (row.pushToken) {
+          unique.add(row.pushToken);
+        }
+      }
+      return [...unique];
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
   private async writeLine(input: AcceptLineInput): Promise<AcceptLineResult> {
     const username = input.username.trim();
     return this.prisma.$transaction(async (tx) => {

@@ -35,7 +35,7 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
       };
     },
     async detectAndPersist() {
-      return 0;
+      return { count: 0, created: [] };
     },
   };
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })

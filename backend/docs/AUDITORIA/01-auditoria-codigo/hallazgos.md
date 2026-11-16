@@ -2,21 +2,34 @@
 
 ## Seguimiento de levantamiento — 11 de noviembre de 2026
 
-La siguiente tabla corresponde al árbol de trabajo local inspeccionado hoy; no significa que esos cambios estén desplegados. Las pruebas locales ejecutadas tras los cambios dieron 69/69 unitarias y 12/12 E2E, build, lint y formato PASS. Las pruebas dinámicas remotas históricas permanecen asociadas al commit `8fa5549` y no se repitieron.
+Tabla histórica del árbol local de mitigaciones. Ver addendum 16-nov abajo para re-medición remota.
 
-| Hallazgo original | Estado del árbol local | Evidencia/pendiente |
+## Addendum verificación remota — 16 de noviembre de 2026
+
+Campañas y smoke contra `https://api.cotasperu.com/api/v1`, commit local `113a538`. Suites: **72 unit + 12 e2e PASS**; cobertura statements **≈70%**.
+
+| Hallazgo | Estado 16-nov | Evidencia |
+|---|---|---|
+| CODE-003 cupo A null | **RESUELTO en API pública** | Cuenta A: `maxConnections=10000`, `devices.limit=10000` |
+| PERF-001 media 503 | **CONFIRMADO / empeorado con tickets independientes** | Estable **5 VU**; **503 desde 10 VU** |
+| PERF-002 rate limit | **CONFIRMADO** | Catalog estable 20 VU; 30 VU → 56% 429; soak paced 3.5 RPS sin errores |
+| PERF-003 tickets 404 intermitentes | **NUEVO / ABIERTO** | Lote 12 tickets → 75% 404; retest 5 tickets 100% 200 |
+| NOTIF catálogo | **BACKEND LISTO; APP PENDIENTE** | `GET /catalog/announcements` 200 con `MOVIE` + `syncCursor`; Flutter debe poll + notificación local |
+| CODE-006 cobertura | **RE-MEDIDO** | ~70% statements (&lt;80%) |
+
+| Hallazgo original | Estado del árbol local (11-nov) | Evidencia/pendiente |
 |---|---|---|
 | CODE-001 / SEC-001: tickets en memoria, TTL 6 h y acceso bearer | **MITIGADO PARCIALMENTE** | Redis cuando está habilitado, TTL por defecto 900 s y revocación al logout del usuario. Fallback en memoria aún existe si Redis falla/deshabilitado; falta validar persistencia, multiinstancia y revocación de sesión/device en staging. |
 | CODE-002 / SEC-004: rate limit por proceso | **MITIGADO PARCIALMENTE** | Usa Redis cuando está disponible; conserva fallback local. Barrido periódico de claves vencidas añadido. Falta ensayo con Redis down y más de una réplica. |
-| CODE-003 / SEC-002: máximo XUI ausente produce cupo nulo | **CORREGIDO EN CÓDIGO, VALIDACIÓN PENDIENTE** | Parser acepta límite de 100 000 y límite fail-safe configurable aplicado en login/suscripción. Debe confirmarse con XUI y el responsable de producto que `max_connections` representa el cupo de dispositivos que COTAS debe aplicar. |
+| CODE-003 / SEC-002: máximo XUI ausente produce cupo nulo | **CORREGIDO EN CÓDIGO + VALIDADO EN API 16-nov** | Parser/fail-safe en código; API pública expone 10000 para Cuenta A. |
 | CODE-008 / SEC-006: login de staff no exigía MFA | **CORREGIDO EN CÓDIGO** | Login requiere TOTP/recovery y exige enrolamiento MFA al staff que aún no lo tiene; E2E local PASS. Falta validar con cuenta staff autorizada en staging. |
 | CODE-009 / SEC-005: redirects de `/media/asset` | **CORREGIDO EN CÓDIGO, VALIDACIÓN DE RED PENDIENTE** | Redirect manual, límite de saltos y comprobación por host/origen; redirecciones a otra IP privada no allowlisted se rechazan. Se añadió validación de puerto no estándar. Falta prueba dinámica controlada. |
 | CODE-010 / SEC-007: redirect de playback fuera de allowlist | **CORREGIDO EN CÓDIGO, VALIDACIÓN DE RED PENDIENTE** | Cada salto y puerto se valida antes de resolver/proxificar; hay límite de saltos. Unit tests locales PASS. |
 | CODE-011: carrera de approve device-link | **MITIGADO PARCIALMENTE** | `markApproved` usa actualización condicional PENDING y revoca el slot si pierde la carrera. Claim de dispositivo y actualización del challenge no forman una sola transacción; falta prueba concurrente y confirmar rollback seguro para dispositivo existente. |
 | CODE-012: CORS excluía PUT/PATCH | **CORREGIDO EN CÓDIGO** | Métodos PUT/PATCH añadidos; preflight de despliegue no probado. |
-| PERF-001: 503 de proxy a 25 VU | **MITIGADO PARCIALMENTE** | Límite local configurable del proxy con valor por defecto conservador 10 según evidencia histórica. No es capacidad medida; repetir únicamente en staging. |
+| PERF-001: 503 de proxy a 25 VU | **RE-MEDIDO 16-nov** | Con tickets independientes: estable 5 VU; 503 desde 10 VU. |
 | CODE-013: OpenAPI diverge de controladores | **ABIERTO** | No se regeneró el documento OpenAPI. |
-| CODE-006: cobertura histórica ~72.48% | **ABIERTO / NO RE-MEDIDO** | Se agregaron pruebas unitarias de allowlist y FCM; no se generó reporte de cobertura nuevo. |
+| CODE-006: cobertura | **≈70% (16-nov)** | Bajo objetivo 80%. |
 
 ### NOTIF-001 — Flutter no registra un token FCM ni maneja mensajes de catálogo
 
@@ -289,45 +302,50 @@ Cualquier cliente con la URL del ticket puede consumir el stream hasta expiraci�
 
 ---
 
-### [PERF-001] Proxy `/playback/media` satura con 503 a 25 VU concurrentes
+### [PERF-001] Proxy `/playback/media` satura bajo concurrencia
 
-- Fecha: 2026-11-11
-- Plataforma/módulo: Playback proxy
+- Fecha: 2026-11-11; **re-medido 2026-11-16**
 - Clasificación: CONFIRMED DEFECT (capacidad)
 - Severidad: HIGH
 - Estado: open
-- Entorno: `api.cotasperu.com` campaña de carga
-- Evidencia: c=10 → 50×200; c=25 → 26×200 + **49×503** (errorRate 0.65). Ver `04-rendimiento/resultados-pruebas-estres.md`.
+- Evidencia 16-nov (tickets independientes): c=5 → 40×200; c=10 → 32% **503**. Histórico 1-ticket: 503@25 VU.
 
-**Impacto:** La reproducción falla antes que otros paths bajo fan-out moderado desde una IP.
-
-**Recomendación:** Limitar concurrencia de proxy, aislar workers de media, correlacionar con XUI/Astra, reintentar campaña multi-IP en staging.
+**Recomendación:** Aislar proxy media, métricas XUI/Astra, staging multi-IP.
 
 ---
 
 ### [PERF-002] Rate limit global limita capacidad útil ~20 VU / IP
 
-- Fecha: 2026-11-11
-- Clasificación: OBSERVATION / capacity ceiling
+- Fecha: 2026-11-11; confirmado 2026-11-16
 - Severidad: MEDIUM
-- Evidencia: catalog c=20 sin errores; c=40 → 25 % 429; spike health 80 → 100 % 429; soak 180 s @5 VU → mayoría 429.
+- Evidencia 16-nov: catalog c=20 errorRate 0; c=30 → 56% 429; soak paced 3.5 RPS → 0 errores.
 
-**Recomendación:** Revisar `GLOBAL_RATE_LIMIT` vs perfil real de apps; separar health/catalog de auth sensible; prueba multi-IP.
+---
+
+### [PERF-003] Tickets de media con 404 intermitentes tras emisión escalonada
+
+- Fecha: 2026-11-16
+- Severidad: HIGH
+- Estado: open
+- Evidencia: 12 authorize OK; pool media inmediato → 18×404 / 24. Retest 5 tickets → 100% 200. Sospecha multi-instancia / fallback memoria sin Redis compartido.
+
+**Recomendación:** Verificar `REDIS_ENABLED` y store compartido en todas las réplicas; prueba sticky vs non-sticky.
 
 ---
 
 ## Resumen cuantitativo
 
-### Actualización de NOTIF-001 — 11 de noviembre de 2026
+### Actualización NOTIF catálogo — 16 de noviembre de 2026
 
-La descripción y recomendación original de este hallazgo corresponden al diseño FCM anterior y quedan supersedidas para novedades del catálogo. En el seguimiento local se implementó detección de películas/series/episodios desde XUI, API autenticada incremental y contrato para notificaciones locales Flutter; se retiró FCM del camino de anuncios. La app no fue modificada. La migración no se aplicó a una base desplegada y falta comprobar el recorrido con XUI/PostgreSQL reales y la presentación en dispositivo. FCM sigue habilitado para otros eventos de dispositivo. Detalle: `NOTIFICACIONES_CATALOGO_BACKEND.md` y `CONTRATO_API_NOTIFICACIONES_FLUTTER.md`.
+Diseño vigente: **no FCM para novedades de catálogo**. El worker sincroniza XUI → detecta altas → persiste anuncios → la app consulta `GET /api/v1/catalog/announcements` y muestra **notificación local** (“Nueva película” / “Nueva serie” / “Nuevo episodio”).  
+Verificado en API pública 16-nov: endpoint **200** con ítems `MOVIE` y `syncCursor`.  
+Contrato móvil: `docs/qa/CONTRATO_API_NOTIFICACIONES_FLUTTER.md` e `INSTRUCCIONES_DEV_FLUTTER_NOTIFICACIONES.md`.  
+FCM permanece para eventos de dispositivo (sesión/inactive), no para catálogo.
 
-## Resumen cuantitativo
-
-| Severidad | Cantidad |
+| Severidad | Cantidad (abiertos relevantes) |
 | --- | --- |
 | CRITICAL | 0 |
-| HIGH | 6 (CODE-001, CODE-003, CODE-008, CODE-009, CODE-010, PERF-001) |
+| HIGH | PERF-001, PERF-003, tickets/SSRF/MFA residuales según despliegue |
 | MEDIUM | 5 (+ PERF-002) |
 | LOW | 3 |
 | INFORMATIONAL | 1 |

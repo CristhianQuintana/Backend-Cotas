@@ -69,7 +69,7 @@ Campo	Valor
 Usuario	`10200000`
 ContraseÃ±a	`10200000`
 Owner	`cotaservice`
-MÃ¡ximo de conexiones configurado	100 000
+MÃ¡ximo de conexiones configurado	10000
 Estado de expiraciÃ³n	En la captura, la opciÃ³n â€œNever Expireâ€ aparenta estar activada
 Fecha mostrada en el formulario	`2026-11-10 15:48`
 PropÃ³sito: utilizar esta cuenta para pruebas controladas de concurrencia, capacidad y comportamiento de reproducciÃ³n, sin que el lÃ­mite de conexiones configurado en la lÃ­nea sea el primer lÃ­mite artificial del experimento.

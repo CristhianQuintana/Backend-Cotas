@@ -40,7 +40,9 @@ describe('CatalogSyncService catalog announcements', () => {
 
   it('publishes movie, series and episode snapshots after a complete XUI inventory', async () => {
     const xui = makeXui();
-    const announcements = { detectAndPersist: jest.fn().mockResolvedValue(3) };
+    const announcements = {
+      detectAndPersist: jest.fn().mockResolvedValue({ count: 3, created: [] }),
+    };
     const cache = {
       setJson: jest.fn().mockResolvedValue(undefined),
       del: jest.fn().mockResolvedValue(undefined),

@@ -220,6 +220,16 @@ export class InMemoryIdentity
     this.pushTokens.set(sessionId, { token, platform });
   }
 
+  async listAllActivePushTokens(): Promise<string[]> {
+    const unique = new Set<string>();
+    for (const device of this.devices) {
+      if (device.status === 'ACTIVE' && device.pushToken) {
+        unique.add(device.pushToken);
+      }
+    }
+    return [...unique];
+  }
+
   async listPushTokens(userId: string, excludeDeviceId?: string | null): Promise<string[]> {
     const unique = new Set<string>();
     for (const device of this.devices) {

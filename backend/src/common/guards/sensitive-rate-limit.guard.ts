@@ -24,7 +24,15 @@ export class SensitiveRateLimitGuard implements CanActivate {
     const limit = this.config.sensitiveRateLimit;
     const ttlMs = this.config.sensitiveRateTtlMs;
 
-    if (this.config.redisEnabled && this.redis) {
+    if (this.config.redisEnabled) {
+      if (!this.redis) {
+        // Fail-closed en límites sensibles: sin Redis no se elude el cupo entre réplicas.
+        throw new DomainError(
+          ErrorCodes.dependencyUnavailable,
+          503,
+          PublicMessages.dependencyUnavailable,
+        );
+      }
       try {
         const redisKey = `ratelimit:sensitive:${key}`;
         const count = await this.redis.incr(redisKey);
@@ -39,7 +47,11 @@ export class SensitiveRateLimitGuard implements CanActivate {
         if (error instanceof DomainError) {
           throw error;
         }
-        // Fallback memoria si Redis falla.
+        throw new DomainError(
+          ErrorCodes.dependencyUnavailable,
+          503,
+          PublicMessages.dependencyUnavailable,
+        );
       }
     }
 

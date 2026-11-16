@@ -20,4 +20,14 @@ describe('allowed upstream URL', () => {
       'upstream_denied',
     );
   });
+
+  it('normaliza IPv6 y entradas host:port en allowlist', () => {
+    expect(isAllowedUpstreamUrl('http://[::1]/live/1', ['[::1]'])).toBe(true);
+    expect(isAllowedUpstreamUrl('http://[::1]:8080/live/1', ['[::1]:8080'])).toBe(true);
+    expect(isAllowedUpstreamUrl('http://[::1]:8080/live/1', ['[::1]'])).toBe(false);
+    expect(isAllowedUpstreamUrl('http://stream.test/', ['stream.test:443'])).toBe(false);
+    expect(isAllowedUpstreamUrl('', ['xui.test'])).toBe(false);
+    expect(isAllowedUpstreamUrl('not-a-url', ['xui.test'])).toBe(false);
+    expect(assertAllowedUpstreamUrl('http://xui.test/ok', ['xui.test']).hostname).toBe('xui.test');
+  });
 });

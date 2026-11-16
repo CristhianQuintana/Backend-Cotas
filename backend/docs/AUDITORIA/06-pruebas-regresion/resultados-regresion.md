@@ -1,51 +1,33 @@
 # Resultados de regresión
 
-- **Fecha:** 2026-11-11 (UTC-5)
-- **Commit:** `8fa5549`
-- **Estación:** Windows, Node 24.13.0
-- **Nota:** Suite **existente** sin modificar código ni tests (mandato de auditoría).
+- **Fecha:** 2026-11-16 (UTC-5)
+- **Commit local:** `113a538`
+- **Estación:** Windows, Node (suite del repo)
+- **Nota:** suites existentes + cobertura; sin modificar producto en esta pasada de medición
 
 ---
 
-## 1. Suites ejecutadas
+## 1. Suites
 
-| Momento | Suite | Comando | Resultado |
-| --- | --- | --- | --- |
-| Pre-carga (mañana) | Unitaria | `npm test -- --coverage=false` | **PASS** — 21 suites, 63 tests |
-| Pre-carga | E2E | `npm run test:e2e -- --coverage=false` | **PASS** — 1 suite, 12 tests |
-| Pre-carga | Cobertura | `npm run test:cov` | **PASS**; statements **72.48%** |
-| **Post-carga / post-resiliencia** | Unitaria | `npm test -- --coverage=false` | **PASS** — 21/21, 63/63 (~11.2 s) |
-| **Post-carga / post-resiliencia** | E2E | `npm run test:e2e -- --coverage=false` | **PASS** — 1/1, 12/12 (~6.2 s) |
-
-Durante e2e aparece log esperado `DEPENDENCY_TIMEOUT` (no falla la suite).
-
----
-
-## 2. Fallos preexistentes vs nuevos
-
-| Tipo | Observación |
+| Suite | Resultado |
 | --- | --- |
-| Fallos de suite | Ninguno |
-| Regresión introducida por auditoría | N/A — sin cambios de producto |
-| Impacto de carga remota en suites locales | Ninguno observado |
+| Unitaria `npm test` | **PASS** — 24 suites, **72** tests |
+| E2E `npm run test:e2e` | **PASS** — 1 suite, **12** tests |
+| Cobertura `npm run test:cov` | **PASS** tests; statements **≈69.98%** (&lt;80% objetivo) |
 
 ---
 
-## 3. Pruebas bloqueadas / no ejecutadas
+## 2. Post-campaña de carga
+
+La batería local se ejecutó en la misma jornada que la campaña de capacidad remota. **Verde**. No se observó regresión de suite atribuible a la carga remota.
+
+---
+
+## 3. Pendientes de herramienta
 
 | Ítem | Motivo |
 | --- | --- |
-| `test:integration` contra XUI real | No requerido tras e2e verde; XUI prod no forzado |
-| Trivy/ZAP | Herramientas ausentes |
+| Trivy / ZAP / Gitleaks en CI local auditor | No instalados en estación |
+| `test:integration` XUI real | No requerido tras e2e + smoke API |
 
----
-
-## 4. Evidencias (post-carga)
-
-```text
-Test Suites: 21 passed, 21 total
-Tests:       63 passed, 63 total
-(e2e) Test Suites: 1 passed / Tests: 12 passed
-```
-
-**Conclusión:** La batería automatizada permanece **verde** después de las campañas de rendimiento y resiliencia. Cobertura de referencia sigue ~72% (&lt;80%).
+**Conclusión:** regresión automatizada **aprobada**; cobertura aún bajo 80%.

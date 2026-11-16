@@ -5,6 +5,7 @@ import { AppConfigModule } from './config/config.module';
 import { APP_CONFIG, type AppConfig } from './config/app-config';
 import { CLOCK, SystemClock } from './common/utils/clock';
 import { PrismaService } from './infrastructure/database/prisma/prisma.service';
+import { redisClientProvider } from './infrastructure/redis/redis.provider';
 import { AuditController } from './modules/audit/presentation/http/audit.controller';
 import { ListAuditUseCase } from './modules/audit/application/list-audit.use-case';
 import { PrismaAuditRepository } from './modules/audit/infrastructure/prisma-audit.repository';
@@ -18,6 +19,7 @@ import {
   MemoryCatalogCache,
   RedisCatalogCache,
 } from './modules/catalog/infrastructure/redis-catalog.cache';
+import { CatalogPushNotifier } from './modules/notifications/catalog-push.notifier';
 import { FcmPushService } from './modules/notifications/fcm-push.service';
 import { HealthController } from './modules/health/health.controller';
 import { HealthService } from './modules/health/health.service';
@@ -100,6 +102,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
   ],
   providers: [
     PrismaService,
+    redisClientProvider,
     PrismaIdentityStore,
     { provide: USER_REPOSITORY, useExisting: PrismaIdentityStore },
     { provide: SESSION_REPOSITORY, useExisting: PrismaIdentityStore },
@@ -158,6 +161,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     CatalogUseCase,
     CatalogAnnouncementsService,
     FcmPushService,
+    CatalogPushNotifier,
     CatalogSyncService,
     PlaybackMediaTicketStore,
     AuthorizePlaybackUseCase,

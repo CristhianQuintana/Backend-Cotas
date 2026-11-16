@@ -146,7 +146,7 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     604_800,
   );
   const playbackTicketTtlSeconds = integer(
-    raw.PLAYBACK_TICKET_TTL_SECONDS ?? '900',
+    raw.PLAYBACK_TICKET_TTL_SECONDS ?? '300',
     'PLAYBACK_TICKET_TTL_SECONDS',
     60,
     7_200,
@@ -157,11 +157,12 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     1,
     100,
   );
+  // Default alineado a fan-out HLS (playlist + N segmentos por stream), no a VU.
   const playbackProxyMaxConcurrent = integer(
-    raw.PLAYBACK_PROXY_MAX_CONCURRENT ?? '10',
+    raw.PLAYBACK_PROXY_MAX_CONCURRENT ?? '128',
     'PLAYBACK_PROXY_MAX_CONCURRENT',
     5,
-    500,
+    2_000,
   );
   const catalogSyncIntervalMs = integer(
     raw.CATALOG_SYNC_INTERVAL_MS ?? '300000',

@@ -28,13 +28,18 @@ import { PlaybackMediaTicketStore } from '../../infrastructure/playback-media-ti
 import { rewritePlaylistForProxy } from '../../infrastructure/resolve-stream-upstream';
 import { AuthorizePlaybackDto } from './dto/authorize-playback.dto';
 
-const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
-const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
+/** Keep-alive amplio: HLS abre muchos sockets cortos (playlist + segmentos). */
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 256, maxFreeSockets: 64 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 256, maxFreeSockets: 64 });
+
+const SLOT_WAIT_MS = 2_000;
+const UPSTREAM_RETRY_STATUSES = new Set([502, 503, 504]);
 
 @ApiTags('playback')
 @Controller('playback')
 export class PlaybackController {
   private activeProxies = 0;
+  private readonly waiters: Array<() => void> = [];
 
   constructor(
     @Inject(AuthorizePlaybackUseCase) private readonly authorizePlayback: AuthorizePlaybackUseCase,
@@ -78,7 +83,7 @@ export class PlaybackController {
     if (!ticket) {
       throw new NotFoundException();
     }
-    this.acquireProxySlot();
+    await this.acquireProxySlot();
     return pipeUpstream({
       ticketId,
       upstreamUrl: ticket.upstreamUrl,
@@ -87,6 +92,7 @@ export class PlaybackController {
       publicApiBase: publicApiBaseFromRequest(req),
       rewritePlaylist: ticket.protocolHint === 'hls',
       allowedHosts: this.config.xuiAllowedStreamHosts,
+      allowUpstreamRetry: true,
       onDone: () => this.releaseProxySlot(),
     });
   }
@@ -118,7 +124,7 @@ export class PlaybackController {
       throw new NotFoundException();
     }
     const upstreamUrl = `${ticket.upstreamOrigin}${path}`;
-    this.acquireProxySlot();
+    await this.acquireProxySlot();
     return pipeUpstream({
       ticketId,
       upstreamUrl,
@@ -127,22 +133,60 @@ export class PlaybackController {
       publicApiBase: publicApiBaseFromRequest(req),
       rewritePlaylist: false,
       allowedHosts: this.config.xuiAllowedStreamHosts,
+      allowUpstreamRetry: false,
       onDone: () => this.releaseProxySlot(),
     });
   }
 
-  private acquireProxySlot(): void {
-    if (this.activeProxies >= this.config.playbackProxyMaxConcurrent) {
-      throw new ServiceUnavailableException({
-        statusCode: 503,
-        code: 'PLAYBACK_PROXY_SATURATED',
-        message: 'El proxy de reproducción está saturado. Reintente en unos segundos.',
-      });
+  /**
+   * Cola con espera acotada: evita 503 inmediato por picos cortos de segmentos HLS
+   * sin eliminar el tope anti-saturación.
+   */
+  private async acquireProxySlot(): Promise<void> {
+    const max = this.config.playbackProxyMaxConcurrent;
+    if (this.activeProxies < max) {
+      this.activeProxies += 1;
+      return;
     }
-    this.activeProxies += 1;
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        const idx = this.waiters.indexOf(wake);
+        if (idx >= 0) {
+          this.waiters.splice(idx, 1);
+        }
+        reject(
+          new ServiceUnavailableException({
+            statusCode: 503,
+            code: 'PLAYBACK_PROXY_SATURATED',
+            message: 'El proxy de reproducción está saturado. Reintente en unos segundos.',
+          }),
+        );
+      }, SLOT_WAIT_MS);
+      // El slot se transfiere desde releaseProxySlot; no incrementar de nuevo.
+      const wake = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      this.waiters.push(wake);
+    });
   }
 
   private releaseProxySlot(): void {
+    const next = this.waiters.shift();
+    if (next) {
+      // Transfiere el slot al waiter (activeProxies se mantiene).
+      next();
+      return;
+    }
     this.activeProxies = Math.max(0, this.activeProxies - 1);
   }
 }
@@ -168,10 +212,13 @@ function pipeUpstream(input: {
   publicApiBase: string;
   rewritePlaylist: boolean;
   allowedHosts: readonly string[];
+  allowUpstreamRetry: boolean;
   onDone: () => void;
   hop?: number;
+  retry?: number;
 }): void {
   const hop = input.hop ?? 0;
+  const retry = input.retry ?? 0;
   let finished = false;
   const done = () => {
     if (finished) {
@@ -251,6 +298,26 @@ function pipeUpstream(input: {
         });
         return;
       }
+
+      // Retry único ante saturación upstream en playlists (no segmentos).
+      if (
+        input.allowUpstreamRetry &&
+        retry < 1 &&
+        UPSTREAM_RETRY_STATUSES.has(status) &&
+        (input.rewritePlaylist || status === 503)
+      ) {
+        proxyRes.resume();
+        setTimeout(() => {
+          pipeUpstream({
+            ...input,
+            hop,
+            retry: retry + 1,
+            onDone: done,
+          });
+        }, 150 + Math.floor(Math.random() * 200));
+        return;
+      }
+
       const contentType = String(proxyRes.headers['content-type'] || '');
       const isPlaylist =
         input.rewritePlaylist ||
@@ -282,6 +349,19 @@ function pipeUpstream(input: {
         });
         return;
       }
+
+      // No propagar 503/502 de segmento como fallo masivo: Retry-After suave.
+      if (UPSTREAM_RETRY_STATUSES.has(status) && !isPlaylist) {
+        proxyRes.resume();
+        if (!input.res.headersSent) {
+          input.res.setHeader('Retry-After', '1');
+          input.res.setHeader('Cache-Control', 'no-store');
+          input.res.status(status).end();
+        }
+        done();
+        return;
+      }
+
       input.res.status(status);
       const passHeaders = [
         'content-type',

@@ -134,6 +134,25 @@
         ]
       }
     },
+    "/api/v1/auth/session": {
+      "get": {
+        "operationId": "IdentityController_session",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/auth/mfa/setup": {
       "post": {
         "operationId": "IdentityController_setup",
@@ -216,6 +235,310 @@
         ],
         "tags": [
           "sessions"
+        ]
+      }
+    },
+    "/api/v1/account/subscription": {
+      "get": {
+        "operationId": "AccountController_getSubscription",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/v1/account/reminders": {
+      "get": {
+        "operationId": "AccountRemindersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "account"
+        ]
+      },
+      "post": {
+        "operationId": "AccountRemindersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAccountReminderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/v1/account/reminders/{id}": {
+      "patch": {
+        "operationId": "AccountRemindersController_patch",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchAccountReminderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "account"
+        ]
+      },
+      "delete": {
+        "operationId": "AccountRemindersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "account"
+        ]
+      }
+    },
+    "/api/v1/devices": {
+      "get": {
+        "operationId": "DevicesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/heartbeat": {
+      "post": {
+        "operationId": "DevicesController_heartbeat",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/push-token": {
+      "put": {
+        "operationId": "DevicesController_putPushToken",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/devices/{id}": {
+      "delete": {
+        "operationId": "DevicesController_revoke",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "devices"
+        ]
+      }
+    },
+    "/api/v1/auth/device-link/session": {
+      "post": {
+        "operationId": "DeviceLinkController_createSession",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeviceLinkSessionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "device-link"
+        ]
+      }
+    },
+    "/api/v1/auth/device-link/session/{code}": {
+      "get": {
+        "operationId": "DeviceLinkController_poll",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "AB3K7N2P",
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceId",
+            "required": true,
+            "in": "query",
+            "description": "Mismo deviceId usado al crear la sesión QR.",
+            "schema": {
+              "example": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "device-link"
+        ]
+      }
+    },
+    "/api/v1/auth/device-link/approve": {
+      "post": {
+        "operationId": "DeviceLinkController_approve",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveDeviceLinkDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "device-link"
         ]
       }
     },
@@ -356,6 +679,96 @@
         ],
         "tags": [
           "admin-users"
+        ]
+      }
+    },
+    "/api/v1/catalog/home": {
+      "get": {
+        "operationId": "CatalogController_home",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/v1/catalog/announcements": {
+      "get": {
+        "operationId": "CatalogController_listAnnouncements",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Compatibilidad con clientes antiguos; usar cursor en nuevas integraciones.",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "MOVIE",
+                "SERIES",
+                "EPISODE"
+              ]
+            }
+          },
+          {
+            "name": "since",
+            "required": false,
+            "in": "query",
+            "description": "Cursor de sincronización devuelto como syncCursor.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Cursor de continuación devuelto como nextCursor.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "catalog"
         ]
       }
     },
@@ -869,7 +1282,7 @@
             "name": "streamIds",
             "required": true,
             "in": "query",
-            "description": "Hasta 20 streamId separados por coma.",
+            "description": "Hasta 50 streamId separados por coma.",
             "schema": {
               "example": "101,102,103",
               "type": "string"
@@ -960,6 +1373,52 @@
         ]
       }
     },
+    "/api/v1/playback/media/{ticketId}": {
+      "get": {
+        "operationId": "PlaybackController_proxyPlaylist",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "playback"
+        ]
+      }
+    },
+    "/api/v1/playback/media/{ticketId}/seg": {
+      "get": {
+        "operationId": "PlaybackController_proxySegment",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "playback"
+        ]
+      }
+    },
     "/api/v1/media/asset": {
       "get": {
         "operationId": "MediaController_asset",
@@ -1044,6 +1503,20 @@
             "minLength": 1,
             "maxLength": 128
           },
+          "deviceId": {
+            "type": "string",
+            "description": "Identificador estable del aparato (UUID o id de instalación). Recomendado en apps IPTV; si falta se usa el User-Agent.",
+            "example": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Plataforma del cliente. Valores desconocidos se tratan como other.",
+            "example": "android"
+          },
+          "deviceName": {
+            "type": "string",
+            "example": "Samsung TV sala"
+          },
           "totpCode": {
             "type": "string",
             "example": "123456"
@@ -1079,6 +1552,112 @@
         },
         "required": [
           "totpCode"
+        ]
+      },
+      "CreateAccountReminderDto": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "example": "12345"
+          },
+          "channelName": {
+            "type": "string",
+            "example": "Canal X"
+          },
+          "programTitle": {
+            "type": "string",
+            "example": "Noticiero"
+          },
+          "leadMinutes": {
+            "type": "number",
+            "enum": [
+              5,
+              10,
+              15,
+              30,
+              60
+            ]
+          },
+          "epgProgramId": {
+            "type": "string",
+            "example": "abc"
+          },
+          "startAt": {
+            "type": "string",
+            "example": "2026-11-02T20:00:00.000Z"
+          },
+          "endAt": {
+            "type": "string",
+            "example": "2026-11-02T21:00:00.000Z"
+          }
+        },
+        "required": [
+          "channelId",
+          "channelName",
+          "programTitle",
+          "leadMinutes"
+        ]
+      },
+      "PatchAccountReminderDto": {
+        "type": "object",
+        "properties": {
+          "leadMinutes": {
+            "type": "number",
+            "enum": [
+              5,
+              10,
+              15,
+              30,
+              60
+            ]
+          }
+        },
+        "required": [
+          "leadMinutes"
+        ]
+      },
+      "PushTokenDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateDeviceLinkSessionDto": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "description": "UUID estable de instalación del TV (obligatorio).",
+            "example": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+          },
+          "platform": {
+            "type": "string",
+            "example": "tv"
+          },
+          "deviceName": {
+            "type": "string",
+            "example": "LG Living"
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      },
+      "ApproveDeviceLinkDto": {
+        "type": "object",
+        "properties": {
+          "linkCode": {
+            "type": "string",
+            "example": "AB3K7N2P",
+            "description": "Código del QR (8 caracteres)."
+          },
+          "deviceName": {
+            "type": "string",
+            "example": "cuarto02",
+            "description": "Nombre visible del TV en GET /devices."
+          }
+        },
+        "required": [
+          "linkCode"
         ]
       },
       "CreateAdminUserDto": {

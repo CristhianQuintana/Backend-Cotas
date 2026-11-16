@@ -21,7 +21,9 @@ export class CatalogAnnouncementsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Persists all resource snapshots and their announcements in one transaction. */
-  async detectAndPersist(snapshot: CatalogAnnouncementSnapshot): Promise<number> {
+  async detectAndPersist(
+    snapshot: CatalogAnnouncementSnapshot,
+  ): Promise<{ count: number; created: CatalogAnnouncementDraft[] }> {
     const kinds: readonly [CatalogAnnouncementKind, readonly CatalogContentItem[]][] = [
       ['vod', snapshot.movies],
       ['series', snapshot.series],
@@ -96,7 +98,7 @@ export class CatalogAnnouncementsService {
           });
         }
       }
-      return all.length;
+      return { count: all.length, created: all };
     });
   }
 

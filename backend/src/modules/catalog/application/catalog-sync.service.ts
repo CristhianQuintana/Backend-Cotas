@@ -8,6 +8,7 @@ import {
   type XuiVodStream,
 } from '../../integrations/xui/domain/models';
 import { CATALOG_CACHE, catalogCacheKey, type CatalogCache } from '../domain/catalog-cache';
+import { CatalogPushNotifier } from '../../notifications/catalog-push.notifier';
 import { CatalogAnnouncementsService } from './catalog-announcements.service';
 
 const LIST_RESOURCES = [
@@ -30,6 +31,7 @@ export class CatalogSyncService {
     @Inject(CATALOG_CACHE) private readonly cache: CatalogCache,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Optional() private readonly announcements?: CatalogAnnouncementsService,
+    @Optional() private readonly catalogPush?: CatalogPushNotifier,
   ) {}
 
   async syncProbeCatalog(): Promise<{
@@ -87,7 +89,7 @@ export class CatalogSyncService {
         this.config.catalogCacheTtlSeconds,
       );
     }
-    const announcementCount = this.announcements
+    const persisted = this.announcements
       ? await this.announcements.detectAndPersist({
           movies: (fetched['vod-streams'] as XuiVodStream[]).map((item) => ({
             id: item.id,
@@ -102,15 +104,19 @@ export class CatalogSyncService {
           })),
           episodes,
         })
-      : 0;
+      : { count: 0, created: [] };
+    if (persisted.created.length > 0 && this.catalogPush) {
+      const notified = await this.catalogPush.notifyNewCatalogItems(persisted.created);
+      this.logger.log(`Push FCM de catálogo: ${notified} token(s) notificados.`);
+    }
     // Invalida bootstrap Home para que el próximo GET lo reconstruya con datos frescos.
     await this.cache.del(catalogCacheKey(scope, 'home:v1'));
 
     const durationMs = Date.now() - started;
     this.logger.log(
-      `Catálogo XUI sincronizado en ${durationMs}ms (${Object.values(resources).join('/')}; anuncios=${announcementCount}).`,
+      `Catálogo XUI sincronizado en ${durationMs}ms (${Object.values(resources).join('/')}; anuncios=${persisted.count}).`,
     );
-    return { scope, resources, durationMs, announcements: announcementCount };
+    return { scope, resources, durationMs, announcements: persisted.count };
   }
 
   private fetchResource(resource: CatalogSyncResource, credentials: XuiCredentials) {

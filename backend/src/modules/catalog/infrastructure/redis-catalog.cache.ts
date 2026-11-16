@@ -17,16 +17,27 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 export class RedisCatalogCache implements CatalogCache, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisCatalogCache.name);
   private readonly client: Redis | null;
+  private readonly injectedShared: boolean;
   private ready = false;
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Optional() @Inject(REDIS_CLIENT) injected?: Redis | null,
   ) {
+    this.injectedShared = injected !== undefined;
     this.client = injected === undefined ? createRedisClient(config) : injected;
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.injectedShared) {
+      this.ready = Boolean(this.client);
+      if (this.config.redisEnabled && !this.ready) {
+        this.logger.warn(
+          'Redis habilitado pero el cliente compartido no está disponible. Caché de catálogo en memoria/XUI.',
+        );
+      }
+      return;
+    }
     this.ready = await connectRedis(this.client);
     if (this.config.redisEnabled && !this.ready) {
       this.logger.warn(
@@ -36,7 +47,8 @@ export class RedisCatalogCache implements CatalogCache, OnModuleInit, OnModuleDe
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (!this.client) {
+    // El cliente compartido (REDIS_CLIENT) lo cierra el proceso Nest; no hacer quit aquí.
+    if (!this.client || this.injectedShared) {
       return;
     }
     try {

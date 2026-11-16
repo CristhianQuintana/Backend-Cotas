@@ -1,125 +1,146 @@
 # Resultados de pruebas de estrés / carga
 
-- **Fecha:** 2026-11-11 (UTC-5 / corridas ~08:40–08:48 y follow-up media ~08:45–08:48)
-- **Commit:** `8fa5549`
+- **Fecha campaña actual:** 2026-11-16 (UTC-5)
+- **Commit código local alineado:** `113a538` (API pública de pruebas)
 - **Entorno:** `https://api.cotasperu.com/api/v1`
-- **Generador:** Node.js pool concurrente (estación Windows auditor)
-- **Cuentas:** Cuenta A / Cuenta B (sin credenciales en este documento)
+- **Generador:** Node.js pool concurrente + verificación curl
+- **Cuentas:** Cuenta A (`10200000`), Cuenta B (`userprueba`) — sin credenciales en este documento
+- **Histórico comparable:** campaña 2026-11-11 sobre `8fa5549`
 
 ---
 
-## 1. Baseline (secuencial)
+## 1. Baseline (secuencial) — 2026-11-16
 
-| Endpoint | N | p50 (ms) | p95 (ms) | p99 (ms) | Errores |
-| --- | ---: | ---: | ---: | ---: | --- |
-| `/health/live` | 30 | 147 | 211 | 325 | 0 |
-| `/health/ready` | 30 | 132 | 210 | 212 | 0 |
-| `/catalog/home` | 30 | 206 | 335 | 521 | 0 |
-| `/auth/me` | 30 | 219 | 275 | 312 | 0 |
-| `/playback/media/{ticket}` | 15 | 173 | 283 | 283 | 0 |
+| Endpoint | N | p95 (ms) | Errores |
+| --- | ---: | ---: | --- |
+| `/health/live` | 30 | 123 | 0 |
+| `/health/ready` | 30 | 93 | 0 |
+| `/catalog/home` | 30 | 240 | 0 |
+| `/auth/me` | 20 | 134 | 0 |
+| `/catalog/announcements?limit=20` | 15 | 195 | 0 |
 
-**Conclusión baseline:** latencias de línea base en cientos de ms; flujo crítico estable a 1 VU.
+**Conclusión baseline:** latencias mejores o equivalentes vs 2026-11-11; anuncios de catálogo responden 200.
 
 ---
 
-## 2. Carga health (público)
+## 2. Carga API JSON (`GET /catalog/home`, token Cuenta A)
 
 | Concurrencia | Requests | RPS | p95 (ms) | errorRate | Status |
 | ---: | ---: | ---: | ---: | ---: | --- |
-| 5 | 50 | 25.0 | 556 | 0 | 200×50 |
-| 10 | 100 | 56.8 | 395 | 0 | 200×100 |
-| 25 | 150 | 112.4 | 568 | **0.20** | 200×120, **429×30** |
-| 80 spike | 80 | 138.6 | — | **1.00** | **429×80** |
+| 5 | 40 | 32.5 | 272 | 0 | 200×40 |
+| 10 | 50 | 45.9 | 426 | 0 | 200×50 |
+| 15 | 60 | 47.9 | 385 | 0 | 200×60 |
+| **20** | **80** | **56.2** | **583** | **0** | **200×80** |
+| 30 | 90 | 90.2 | 727 | **0.56** | 200×40, **429×50** |
 
-**Parada:** en c=25 aparece `GLOBAL_RATE_LIMIT` (≈300/min). Spike 80 = 100 % 429.
+**Capacidad estable API JSON (1 IP):** **20 VU** (errorRate 0).  
+**Techo:** 30 VU → rate limit global (~300/min) domina.
 
----
-
-## 3. Carga API JSON (`GET /catalog/home`, token Cuenta A reutilizado)
-
-| Concurrencia | Requests | RPS | p50 | p95 | p99 | errorRate | Status |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 5 | 40 | 22.3 | 180 | 424 | 487 | 0 | 200×40 |
-| 10 | 60 | 24.9 | 309 | 726 | 894 | 0 | 200×60 |
-| 20 | 80 | 32.7 | 455 | 1243 | 1640 | 0 | 200×80 |
-| 40 | 120 | 42.4 | 908 | 1608 | 2188 | **0.25** | 200×90, **429×30** |
-
-**Observación:** hasta ~20 concurrentes sin error HTTP; p95 ya &gt; 1.2 s. A 40 VU el limitador global corta (~25 % 429).
+Comparación 11-nov: estable ~20 VU; saturación similar por 429 (antes c=40).
 
 ---
 
-## 4. Carga playback media (ticket válido, sin JWT)
+## 3. Playback con tickets independientes (streams distintos)
 
-| Concurrencia | Requests | RPS | p50 | p95 | p99 | errorRate | Status |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 5 | 30 | 15.2 | 258 | 633 | 692 | 0 | 200×30 |
-| 10 | 50 | 18.9 | 495 | 691 | 812 | 0 | 200×50 |
-| 25 | 75 | 52.6 | 514 | 828 | 829 | **0.65** | 200×26, **503×49** |
+Metodología corregida respecto a 11-nov: **no** martillar un único ticket; se autorizaron streams live distintos y se reutilizó un set de tickets válidos.
 
-**Parada:** a 25 VU el proxy multimedia responde **503** (saturación/upstream), no solo 429.  
-Este es el **primer cuello de botella de reproducción medido** bajo esta campaña.
+### 3.1 Emisión de tickets
+
+12 authorize Cuenta A (paced ~7 s) → **12×200** con `streamUrl` `/playback/media/{id}`.  
+Verificación posterior de 5 tickets: concurrente y secuencial **5×200**.
+
+### 3.2 Carga media sobre 5 tickets vivos
+
+| Concurrencia | Requests | RPS | p95 (ms) | errorRate | Status |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| **5** | **40** | **15.8** | **533** | **0** | **200×40** |
+| 10 | 50 | 28.8 | 527 | **0.32** | 200×34, **503×16** |
+| 15 | 60 | 58.3 | 581 | **0.67** | 200×20, 503×36, 500×4 |
+| 20 | 80 | 87.3 | 602 | **0.78** | 200×18, 503×59, 500×3 |
+
+**Capacidad estable playlist HLS (1 IP, tickets distintos):** **5 VU** concurrentes.  
+**Techo:** desde **10 VU** aparecen **503** (proxy/upstream), peor que el experimento histórico de 1 ticket (@25 VU) porque ahora hay fan-out real a varios streams.
+
+### 3.3 Anomalía observada (tickets 404)
+
+En la corrida inicial con 12 tickets escalonados + pool inmediato c=3: **6×200 + 18×404**.  
+Reprueba controlada (5 tickets) → 100 % 200.  
+
+**Interpretación:** inconsistencia de visibilidad de tickets bajo emisión prolongada/concurrencia (sospechoso de multi-instancia con store no compartido o fallback memoria). Clasificado como hallazgo **PERF-003 / RES-004** — no inventar causa de infra sin logs de host.
 
 ---
 
-## 5. Soak (endurance)
+## 4. Soak controlado (bajo rate limit)
 
 | Parámetro | Valor |
 | --- | --- |
-| Escenario | `/catalog/home` @ 5 concurrentes, 180 s |
-| Requests | ~2290 |
-| RPS medio | 12.7 |
-| p50 / p95 / p99 (solo OK) | 217 / 436 / 735 ms |
-| Status | 200×600, **429×1690** (errorRate ≈ 0.74) |
+| Escenario | home + me + health, pacing ~3.5 RPS, 120 s |
+| Requests | 423 |
+| errorRate | **0** |
+| p95 | 222 ms |
 
-**Interpretación:** el soak a 5 VU sostenidos **supera el cupo global ~300 req/min** (5 workers con poco sleep ≈ &gt;5 RPS sostenido). La API no “cae” (ready sigue OK después), pero el **throttling domina** la experiencia bajo carga sostenida desde una sola IP.
-
----
-
-## 6. Spike
-
-80 requests concurrentes a `/health/live` → **80×429**, p95 no aplicable (0 OK). Recuperación posterior: `/health/ready` = 200 tras las pruebas.
+**Conclusión:** sostenido **sin 429** si se respeta el techo global (~5 RPS/IP). El soak agresivo del 11-nov (errorRate 0.74) era auto-inducción de rate limit, no caída del proceso.
 
 ---
 
-## 7. Cuenta B — límite 15 dispositivos
+## 5. Cuentas A / B (estado 2026-11-16)
+
+| Aspecto | Cuenta A | Cuenta B |
+| --- | --- | --- |
+| Login | 200 | 200 |
+| `maxConnections` / `maxDevices` | **10000** | **15** |
+| devices used/limit | 8 / 10000 | 15 / 15 |
+| Expiración API | vacía / Active (Never Expire aparente) | vigente según snapshot previo |
+
+**Nota:** el límite configurado en el informe de auditoría para A figura ahora como **10000** (no 100000). La API **ya expone** el tope (antes `null` en `8fa5549`).
+
+---
+
+## 6. Anuncios de catálogo (funcional bajo carga ligera)
 
 | Prueba | Resultado |
 | --- | --- |
-| 18 logins paced (~7 s) con `deviceId` únicos | Todos **200** — login usa política **displace** (libera aparatos más nuevos; no 403) |
-| Estado final `/devices` | **used=15 / limit=15**; subscription `maxConnections=15` |
-| QR `POST /auth/device-link/approve` con cupo lleno | **403 `DEVICE_LIMIT`** (`used=15`,`limit=15`) — mensaje controlado, sin leak interno |
-
-**Unidad controlada:** dispositivos ACTIVE en PostgreSQL alineados a `maxConnections` de snapshot XUI (no “streams HTTP”).
+| `GET /catalog/announcements?limit=5` | 200, items>0, `type=MOVIE`, `syncCursor` presente |
+| `since=MA` (cursor 0) | 200 |
+| `since=` vacío | 400 VALIDATION_ERROR (esperado) |
+| Baseline 15 muestras | errorRate 0, p95 ~195 ms |
 
 ---
 
-## 8. Cuenta A — alta capacidad
+## 7. Estimación de capacidad (metodología explícita)
 
-| Métrica | Valor observado |
+| Definición | Valor medido 2026-11-16 |
 | --- | --- |
-| Login / catálogo / authorize / media | OK en pruebas de carga asociadas |
-| `/devices` tras campaña | **used=16, limit=null** |
-| Límite 100 000 ejercido | **No** — API no expone tope; cupo efectivo ilimitado en backend (CODE-003) |
+| VU | conexiones HTTP concurrentes **desde 1 IP** |
+| API JSON estable | **20 VU**, ~56 RPS pico de etapa, p95 ~583 ms |
+| Media playlist estable | **5 VU** con tickets independientes, ~16 RPS, p95 ~533 ms |
+| Techo API | 30 VU → mayoría 429 |
+| Techo media | 10 VU → 503 frecuentes |
+| RPS sostenible / IP | **~3.5–5** (por `GLOBAL_RATE_LIMIT` ≈300/min) |
+
+**Equivalencia a televisores (tentativa, no certificada multi-nodo):**  
+Si 1 TV activa ≈ 1 sesión de playlist concurrente estable, la cota inferior medida es **≈5 TVs concurrentes por edge/IP** en el path de media.  
+**No** se afirma “N usuarios de producción” ni se multiplica por nodos sin prueba multi-IP + métricas de host/XUI.
 
 ---
 
-## 9. Campos de capacidad medidos vs no medidos
+## 8. Comparativa 11-nov vs 16-nov
 
-| Campo | Estado |
-| --- | --- |
-| RPS / p50–p99 por etapa | **Medido** |
-| Punto de saturación observable | **Medido:** rate limit (~25–40 VU API); media **503 @ 25 VU** |
-| Soak | **Medido** (limitado por 429) |
-| Spike | **Medido** |
-| CPU/RAM/PG pool host prod | **No medido** (sin SSH/métricas host) |
-| 1000–10 000 VU | **No ejecutado** — ya hay saturación funcional antes; riesgo injustificado |
+| Métrica | 11-nov (`8fa5549`) | 16-nov (`113a538`) |
+| --- | --- | --- |
+| Cuenta A maxConnections | null | **10000** |
+| Catalog estable | ~20 VU | **20 VU** |
+| Media (1 ticket) | estable 10 / 503@25 | no repetido |
+| Media (tickets independientes) | no medido | **estable 5 / 503@10** |
+| Soak | 429 masivo sin pacing | **0 errores** con pacing 3.5 RPS |
+| Announcements | N/A | **operativo** |
 
 ---
 
-## 10. Conclusión de rendimiento
+## 9. Conclusión de rendimiento
 
-1. **API JSON estable** en carga baja/media hasta ~20 VU desde una IP, con degradación de latencia.
-2. **Primer limitador de API:** `GLOBAL_RATE_LIMIT` (~300/min) → 429.
-3. **Primer limitador de streaming medido:** **503 en proxy media @ 25 concurrentes** sobre el mismo ticket.
-4. **Cuenta B:** límite 15 **sí se aplica** en approve QR; login **desplaza** en lugar de rechazar.
-5. No se afirma capacidad de “usuarios concurrentes de producción” más allá de estos techos medidos desde una estación/IP.
+1. API JSON: capacidad estable demostrada **20 VU / IP**.  
+2. Media: con streams independientes el techo útil baja a **5 VU** antes de 503.  
+3. Rate limit global sigue siendo el fusible de API; el proxy/upstream el de reproducción.  
+4. Tickets: funcionan en camino feliz; hay evidencia de **404 intermitentes** bajo emisión masiva escalonada → riesgo multi-instancia.  
+5. Estimación TV: **~5 playlists concurrentes / IP** como cota inferior medible; cerrar proyecto comercial requiere staging multi-IP + CPU/RAM/XUI.

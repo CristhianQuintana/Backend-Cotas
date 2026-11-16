@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
+import { DomainError, ErrorCodes, PublicMessages } from '../../../common/exceptions/domain-error';
 import { APP_CONFIG, type AppConfig } from '../../../config/app-config';
 import { connectRedis, createRedisClient } from '../../../infrastructure/redis/redis.client';
 import { REDIS_CLIENT } from '../../catalog/infrastructure/redis-catalog.cache';
@@ -36,7 +37,7 @@ export class PlaybackMediaTicketStore implements OnModuleInit, OnModuleDestroy {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Optional() @Inject(REDIS_CLIENT) injected?: Redis | null,
   ) {
-    if (injected) {
+    if (injected !== undefined) {
       this.client = injected;
       this.ownsClient = false;
     } else {
@@ -47,13 +48,24 @@ export class PlaybackMediaTicketStore implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     if (!this.config.redisEnabled) {
-      this.logger.warn('Tickets de playback en memoria (REDIS_ENABLED=false).');
+      this.logger.warn(
+        'Tickets de playback en memoria (REDIS_ENABLED=false). Solo válido en test/single-node.',
+      );
+      return;
+    }
+    if (!this.ownsClient) {
+      this.ready = Boolean(this.client);
+      if (!this.ready) {
+        this.logger.error(
+          'REDIS_ENABLED=true pero el cliente compartido no está disponible. Emisión de tickets fallará (fail-closed).',
+        );
+      }
       return;
     }
     this.ready = await connectRedis(this.client);
     if (!this.ready) {
-      this.logger.warn(
-        'Redis no alcanzable: tickets de playback caen a memoria local (no multi-instancia).',
+      this.logger.error(
+        'Redis no alcanzable: tickets de playback NO usan memoria local (fail-closed multi-instancia).',
       );
     }
   }
@@ -85,6 +97,16 @@ export class PlaybackMediaTicketStore implements OnModuleInit, OnModuleDestroy {
     return Boolean(this.client) && this.ready && this.config.redisEnabled;
   }
 
+  private assertRedisWhenEnabled(): void {
+    if (this.config.redisEnabled && !this.useRedis()) {
+      throw new DomainError(
+        ErrorCodes.dependencyUnavailable,
+        503,
+        PublicMessages.dependencyUnavailable,
+      );
+    }
+  }
+
   async issue(input: {
     upstreamUrl: string;
     protocolHint: 'hls' | 'progressive';
@@ -94,6 +116,7 @@ export class PlaybackMediaTicketStore implements OnModuleInit, OnModuleDestroy {
     contentType?: string | null;
     ttlMs?: number;
   }): Promise<PlaybackMediaTicket> {
+    this.assertRedisWhenEnabled();
     const ttl = this.ttlMs(input.ttlMs);
     const upstream = new URL(input.upstreamUrl);
     const ticket: PlaybackMediaTicket = {
@@ -124,7 +147,11 @@ export class PlaybackMediaTicketStore implements OnModuleInit, OnModuleDestroy {
   }
 
   async get(id: string): Promise<PlaybackMediaTicket | null> {
-    if (this.useRedis() && this.client) {
+    if (this.config.redisEnabled) {
+      if (!this.useRedis() || !this.client) {
+        // Fail-closed: no leer memoria local que otras réplicas no comparten.
+        return null;
+      }
       const raw = await this.client.get(this.key(id));
       if (!raw) {
         return null;
@@ -152,7 +179,10 @@ export class PlaybackMediaTicketStore implements OnModuleInit, OnModuleDestroy {
   }
 
   async revoke(id: string): Promise<void> {
-    if (this.useRedis() && this.client) {
+    if (this.config.redisEnabled) {
+      if (!this.useRedis() || !this.client) {
+        return;
+      }
       const raw = await this.client.get(this.key(id));
       await this.client.del(this.key(id));
       if (raw) {
@@ -169,7 +199,10 @@ export class PlaybackMediaTicketStore implements OnModuleInit, OnModuleDestroy {
   }
 
   async revokeForUser(userId: string): Promise<number> {
-    if (this.useRedis() && this.client) {
+    if (this.config.redisEnabled) {
+      if (!this.useRedis() || !this.client) {
+        return 0;
+      }
       const ids = await this.client.smembers(this.userKey(userId));
       if (ids.length === 0) {
         return 0;

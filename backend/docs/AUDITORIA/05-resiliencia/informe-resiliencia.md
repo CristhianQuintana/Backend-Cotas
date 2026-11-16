@@ -1,96 +1,57 @@
 ﻿# Informe de resiliencia
 
-- **Fecha:** 2026-11-11 (UTC-5)
-- **Commit:** `8fa5549`
-- **MÃ©todos:** (1) sondas no destructivas contra `api.cotasperu.com`; (2) caos controlado en **stack Docker local** (`backend-backend-1` + `backend-postgres-1` en estaciÃ³n auditor); (3) revisiÃ³n de cÃ³digo/diseÃ±o
+- **Fecha base:** 2026-11-11
+- **Addendum:** 2026-11-16
+- **Commit referencia:** `113a538` (API pública) / histórico lab `8fa5549`
+- **Métodos:** sondas no destructivas en `api.cotasperu.com`; caos PG en Docker local; re-medición de media/tickets
 
 ---
 
 ## 1. Matriz de fallos
 
-| Fallo | Entorno | Procedimiento | Resultado | Estado |
-| --- | --- | --- | --- | --- |
-| Ticket media invÃ¡lido | Remoto | `GET /playback/media/does-not-existâ€¦` | **404** `NOT_FOUND`, mensaje genÃ©rico, ~466 ms | **PASS** |
-| JWT invÃ¡lido | Remoto | `GET /auth/me` Bearer basura | **401** | **PASS** |
-| Authorize stream invÃ¡lido | Remoto | `streamId` no string / inexistente | **400** `VALIDATION_ERROR` | **PASS** |
-| RÃ¡faga authorize | Remoto | 12 POST seguidos | 400Ã—9 luego **429Ã—3** (SensitiveRateLimit) | **PASS** (degradaciÃ³n controlada) |
-| Abort cliente media | Remoto | `fetch` + `AbortController` mid-body | AbortError cliente; API sigue `ready=ok` | **PASS** |
-| Ready tras carga | Remoto | Tras soak/spike | **200** `database:up` | **PASS** |
-| CaÃ­da PostgreSQL | **Local Docker** | `docker pause backend-postgres-1` | `/health/live` **200**; `/health/ready` **timeout** (HTTP 000 / &gt;8 s) | **EJECUTADO** |
-| RecuperaciÃ³n PG | Local | `docker unpause` + 4 s | `/health/ready` **200** `database:up` | **PASS** |
-| Restart backend | Local | `docker restart backend-backend-1` | Proceso vuelve; health **200** | **PASS** (disponibilidad proceso) |
-| PÃ©rdida tickets tras restart | CÃ³digo + diseÃ±o | Store in-memory | Tickets no sobreviven al proceso | **CONFIRMADO por diseÃ±o** (RES-001) |
-| XUI down en producciÃ³n | Remoto | Inducir fallo XUI real | **NO EJECUTADO** â€” afectarÃ­a clientes/compartido | BLOCKED (prod) |
-| Latencia XUI | Unitario + timeout client | Tests `DEPENDENCY_TIMEOUT` | Cubierto en suite; e2e registra timeout tipado | Parcial (test) |
-| Agotar pool PG | â€” | â€” | No forzado (riesgo) | NOT RUN |
-| 4xx/5xx XUI mapeados | CÃ³digo/tests | Mappers | Errores tipados sin stack interno en respuestas muestreadas | Parcial |
+| Fallo | Resultado | Estado |
+| --- | --- | --- |
+| Ticket media inválido | 404 controlado | PASS |
+| JWT inválido | 401 | PASS |
+| Abort cliente media | API sigue ready | PASS |
+| PG pause (Docker local) | live 200; ready timeout ~8 s; recupera | EJECUTADO |
+| Restart API | proceso OK; tickets memoria se pierden si no hay Redis | CONFIRMADO diseño |
+| Media fan-out | 503 desde 10 VU (16-nov, tickets independientes) | CONFIRMADO |
+| Tickets tras authorize escalonado | 404 intermitentes (16-nov) | ABIERTO PERF-003 |
+| XUI down producción | No inducido | BLOCKED |
 
 ---
 
-## 2. Evidencia local â€” PostgreSQL pausado
+## 2. Addendum capacidad/resiliencia media (2026-11-16)
 
-```text
-Antes:  live=200  ready=200 checks.database=up
-Durante pause PG:
-  live_http=200  (~10 ms)
-  ready_http=000  timeâ‰ˆ8.0s (timeout cliente; no degrada limpio a 503 inmediato)
-DespuÃ©s unpause:
-  ready_http=200  database=up
-```
-
-**Hallazgo RES-002:** `live` no refleja dependencia DB (esperado liveness); `ready` **no falla rÃ¡pido** ante PG pausado â€” puede colgar hasta timeout del probe/cliente. Riesgo de orquestaciÃ³n: readiness gates lentos / falsos â€œhealthyâ€ prolongados segÃºn timeout del probe.
-
----
-
-## 3. Controles observados
-
-| Control | Evidencia |
+| Prueba | Resultado |
 | --- | --- |
-| Timeouts XUI | `XUI_TIMEOUT_MS` + DomainError `DEPENDENCY_TIMEOUT` |
-| Errores tipados | `NOT_FOUND`, `DEVICE_LIMIT`, `RATE_LIMITED`, `VALIDATION_ERROR` |
-| Circuit breaker | **No encontrado** |
-| Rate limit como backpressure | 429 bajo spike/soak â€” actÃºa como fusible |
-| LiberaciÃ³n recursos proxy | Abort cliente no dejÃ³ API caÃ­da (ready OK) |
-| DegradaciÃ³n catÃ¡logo | DiseÃ±o `source=cache` si live falla (no inducido en prod) |
-| Cupo dispositivos | QR approve **403 DEVICE_LIMIT** con used/limit=15 |
+| 5 tickets vivos, c=5 | 40/40 × 200 |
+| 5 tickets, c=10 | 32% 503 |
+| 12 authorize + pool inmediato | 75% 404 (inconsistencia) |
+| Retest 5 tickets | 100% 200 |
+| Authorize → GET inmediato | 200 HLS |
 
 ---
 
-## 4. Hallazgos de resiliencia
+## 3. Hallazgos
 
-### [RES-001] PÃ©rdida de tickets de media ante reinicio del proceso
+### RES-001 — Tickets frágiles sin store compartido
+HIGH. Mitigado parcialmente con Redis en código; PERF-003 sugiere validar réplicas en despliegue.
 
-- ClasificaciÃ³n: CONFIRMED DEFECT (diseÃ±o)
-- Severidad: HIGH
-- Evidencia: `PlaybackMediaTicketStore` in-memory; restart local recupera proceso pero no el store
-- Impacto: players con URL activa â†’ 404 tras deploy/restart
-- RecomendaciÃ³n: Redis/store compartido + TTL corto + sticky innecesaria si store externo
+### RES-002 — ready lento si PG cae
+MEDIUM. Timeout ~8 s en lab.
 
-### [RES-002] `/health/ready` cuelga ante PostgreSQL no disponible
+### RES-003 — 503 proxy media
+HIGH. Re-medido: techo útil ~5 VU con streams independientes.
 
-- ClasificaciÃ³n: CONFIRMED (lab local)
-- Severidad: MEDIUM
-- Evidencia: timeout ~8 s sin HTTP de error limpio durante `docker pause` de Postgres
-- Impacto: probes de orquestaciÃ³n lentos; posible trÃ¡fico en Instantes intermedios
-- RecomendaciÃ³n: timeout estricto en check Prisma + respuesta 503 rÃ¡pida
-
-### [RES-003] Proxy media retorna 503 bajo fan-out concurrente
-
-- ClasificaciÃ³n: CONFIRMED (carga remota)
-- Severidad: HIGH (capacidad/resiliencia de streaming)
-- Evidencia: 25 VU â†’ 49Ã—503 / 75 requests
-- Impacto: reproducciÃ³n falla antes que el rate limit en ese path
-- RecomendaciÃ³n: colas/lÃ­mites de proxy, mÃ©tricas upstream, prueba aislada XUI
+### RES-004 — 404 intermitente de tickets
+HIGH. Sospecha multi-instancia / fallback memoria.
 
 ---
 
-## 5. ConclusiÃ³n
+## 4. Conclusión
 
-Se **ejecutaron** sondas de resiliencia remotas y un experimento controlado de caÃ­da/recuperaciÃ³n de PostgreSQL en Docker local.  
-
-- RecuperaciÃ³n tras unpause PG: **sÃ­**.  
-- DegradaciÃ³n limpia inmediata de ready: **parcial / lenta** (RES-002).  
-- Fragilidad de tickets a restart: **sÃ­** (RES-001).  
-- Caos XUI en producciÃ³n compartida: **no** (bloqueo justificado); cobertura vÃ­a tests de timeout.
-
-No se afirma resiliencia completa multi-AZ ni chaos de red LAN XUI (`<XUI_INTERNAL_HOST>`) desde esta estaciÃ³n.
+Resiliencia de proceso/API básica: aceptable.  
+Resiliencia de reproducción bajo concurrencia: **limitada**.  
+Para cierre comercial: Redis compartido verificado + staging multi-IP + métricas XUI.

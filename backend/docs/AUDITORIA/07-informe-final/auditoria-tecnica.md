@@ -73,20 +73,21 @@ Ver `00-inventario-proyecto/arquitectura.md`. Resumen: NestJS BFF → PostgreSQL
 | 1 Código | Completada |
 | 2 Funcional | Completada (cupo B confirmado) |
 | 3 Seguridad | Completada (sin ZAP/Trivy) |
-| 4 Rendimiento | **Completada** — métricas en `04-rendimiento/` |
-| 5 Resiliencia | **Completada** con lab local PG; XUI prod no tumbar |
-| 6 Regresión | Completada — verde pre y post carga |
-| 7 Cierre | Completada |
+| 4 Rendimiento | **Completada y re-medida 2026-11-16** — estimaciones en `04-rendimiento/` |
+| 5 Resiliencia | Completada lab PG; XUI prod no tumbar |
+| 6 Regresión | **72 unit + 12 e2e PASS** (16-nov) |
+| 7 Cierre | Actualizado 16-nov |
 
 ---
 
-## 5. Hallazgos consolidados — prioridad desarrollo
+## 5. Hallazgos consolidados — prioridad desarrollo (16-nov)
 
-1. Tickets media (persistencia, TTL, revocación) — HIGH  
-2. Fail-safe cupo si XUI omite max — HIGH  
-3. MFA login enforcement — HIGH  
-4. SSRF redirects media/playback — HIGH  
-5. **Proxy media 503 @ 25 VU (PERF-001)** — HIGH  
+1. **PERF-001** proxy media 503 desde **10 VU** (tickets independientes) — HIGH  
+2. **PERF-003** tickets 404 intermitentes — HIGH  
+3. Redis compartido / multi-instancia tickets — HIGH  
+4. Cobertura ~70% — MEDIUM  
+5. OpenAPI incompleto — LOW  
+6. Cupo A null — **RESUELTO en API** (10000)  
 6. Rate limit distribuido / calibración; ready timeout PG; CORS; race QR — MEDIUM  
 7. Cobertura / OpenAPI — LOW–MEDIUM  
 

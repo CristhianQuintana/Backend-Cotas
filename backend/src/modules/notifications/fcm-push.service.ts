@@ -37,6 +37,35 @@ export class FcmPushService {
     });
   }
 
+  /** Nuevas películas/series detectadas por el sync de catálogo. */
+  async notifyCatalogAnnouncements(
+    tokens: readonly string[],
+    input: { title: string; body: string; count: number; kinds: readonly string[] },
+  ): Promise<void> {
+    if (!this.config.fcmEnabled || tokens.length === 0) {
+      return;
+    }
+    if (!this.config.fcmProjectId || !this.config.fcmClientEmail || !this.config.fcmPrivateKey) {
+      this.logger.warn('FCM habilitado sin credenciales completas; se omiten envíos de catálogo.');
+      return;
+    }
+    const bearer = await this.getAccessToken();
+    const data = {
+      type: 'catalog_announcement',
+      count: String(input.count),
+      kinds: input.kinds.join(','),
+    };
+    for (const token of tokens) {
+      try {
+        await this.send(bearer, token, input.title, input.body, data);
+      } catch (error) {
+        this.logger.warn(
+          `FCM catalog_announcement falló: ${error instanceof Error ? error.message : 'error'}`,
+        );
+      }
+    }
+  }
+
   private async notifyDeviceEvent(
     tokens: readonly string[],
     input: {
