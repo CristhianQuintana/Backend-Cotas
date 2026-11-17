@@ -56,9 +56,12 @@ describe('FcmPushService', () => {
           status: 200,
         });
       }
-      return new Response(JSON.stringify({ error: { status: 'NOT_FOUND', message: 'UNREGISTERED' } }), {
-        status: 404,
-      });
+      return new Response(
+        JSON.stringify({ error: { status: 'NOT_FOUND', message: 'UNREGISTERED' } }),
+        {
+          status: 404,
+        },
+      );
     }) as never;
 
     await service.notifyCatalogAnnouncements(['bad-token'], {

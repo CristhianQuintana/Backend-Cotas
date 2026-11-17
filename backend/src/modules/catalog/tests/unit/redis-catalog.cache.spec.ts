@@ -16,10 +16,7 @@ describe('RedisCatalogCache', () => {
       }),
       ping: jest.fn(async () => 'PONG'),
     };
-    const cache = new RedisCatalogCache(
-      { redisEnabled: true } as AppConfig,
-      redis as never,
-    );
+    const cache = new RedisCatalogCache({ redisEnabled: true } as AppConfig, redis as never);
     await cache.onModuleInit();
     expect(cache.isEnabled()).toBe(true);
     await cache.setJson('k1', { a: 1 }, 60);

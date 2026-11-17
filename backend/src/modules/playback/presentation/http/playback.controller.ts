@@ -307,14 +307,17 @@ function pipeUpstream(input: {
         (input.rewritePlaylist || status === 503)
       ) {
         proxyRes.resume();
-        setTimeout(() => {
-          pipeUpstream({
-            ...input,
-            hop,
-            retry: retry + 1,
-            onDone: done,
-          });
-        }, 150 + Math.floor(Math.random() * 200));
+        setTimeout(
+          () => {
+            pipeUpstream({
+              ...input,
+              hop,
+              retry: retry + 1,
+              onDone: done,
+            });
+          },
+          150 + Math.floor(Math.random() * 200),
+        );
         return;
       }
 

@@ -89,9 +89,8 @@ export class InMemoryIdentity
     subject: string,
   ): Promise<AuthIdentityRecord | null> {
     return (
-      this.identities.find(
-        (row) => row.provider === provider && row.providerSubject === subject,
-      ) ?? null
+      this.identities.find((row) => row.provider === provider && row.providerSubject === subject) ??
+      null
     );
   }
 
@@ -102,7 +101,11 @@ export class InMemoryIdentity
     emailVerified: boolean;
     now: Date;
   }): Promise<AuthIdentityRecord> {
-    if (this.identities.some((row) => row.provider === 'google' && row.providerSubject === input.subject)) {
+    if (
+      this.identities.some(
+        (row) => row.provider === 'google' && row.providerSubject === input.subject,
+      )
+    ) {
       throw new DomainError(ErrorCodes.identityConflict, 409, PublicMessages.identityConflict);
     }
     const record: AuthIdentityRecord = {

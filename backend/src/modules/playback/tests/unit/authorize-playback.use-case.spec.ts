@@ -28,9 +28,7 @@ describe('AuthorizePlaybackUseCase', () => {
       issue: jest.fn().mockResolvedValue({ id: 'ticket-1' }),
     };
     const xui = {
-      getLiveStreams: jest
-        .fn()
-        .mockResolvedValue(overrides?.live ?? [{ id: '10', name: 'Canal' }]),
+      getLiveStreams: jest.fn().mockResolvedValue(overrides?.live ?? [{ id: '10', name: 'Canal' }]),
       getVodStreams: jest
         .fn()
         .mockResolvedValue(

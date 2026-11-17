@@ -61,7 +61,11 @@ export class GoogleLoginUseCase {
     if (existingLink) {
       const user = await this.users.findById(existingLink.userId);
       if (!user || user.status !== 'ACTIVE') {
-        throw new DomainError(ErrorCodes.invalidCredentials, 401, PublicMessages.invalidCredentials);
+        throw new DomainError(
+          ErrorCodes.invalidCredentials,
+          401,
+          PublicMessages.invalidCredentials,
+        );
       }
       return this.issueSession(user, command, 'google');
     }
@@ -93,10 +97,18 @@ export class GoogleLoginUseCase {
       const password = command.password?.trim() ?? '';
       const valid = await this.passwords.verify(password, byEmail.passwordHash);
       if (!valid) {
-        throw new DomainError(ErrorCodes.invalidCredentials, 401, PublicMessages.invalidCredentials);
+        throw new DomainError(
+          ErrorCodes.invalidCredentials,
+          401,
+          PublicMessages.invalidCredentials,
+        );
       }
       if (byEmail.status !== 'ACTIVE') {
-        throw new DomainError(ErrorCodes.invalidCredentials, 401, PublicMessages.invalidCredentials);
+        throw new DomainError(
+          ErrorCodes.invalidCredentials,
+          401,
+          PublicMessages.invalidCredentials,
+        );
       }
       await this.identities.linkGoogleIdentity({
         userId: byEmail.id,

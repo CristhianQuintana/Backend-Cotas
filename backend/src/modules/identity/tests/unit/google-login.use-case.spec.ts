@@ -1,13 +1,14 @@
-import { DomainError, ErrorCodes, PublicMessages } from '../../../../common/exceptions/domain-error';
+import {
+  DomainError,
+  ErrorCodes,
+  PublicMessages,
+} from '../../../../common/exceptions/domain-error';
 import type { Clock } from '../../../../common/utils/clock';
 import type { AppConfig } from '../../../../config/app-config';
 import { GoogleLoginUseCase } from '../../application/use-cases/google-login.use-case';
 import { RegisterEmailUseCase } from '../../application/use-cases/register-email.use-case';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
-import type {
-  PasswordHasher,
-  TokenService,
-} from '../../domain/ports/identity.ports';
+import type { PasswordHasher, TokenService } from '../../domain/ports/identity.ports';
 import type { VerifiedGoogleIdentity } from '../../infrastructure/google/google-id-token.verifier';
 import { InMemoryIdentity, addUser } from '../../../../../test/fakes/in-memory-identity';
 import { FakeXui } from '../../../../../test/fakes/fake-xui';
@@ -220,11 +221,7 @@ describe('Google Sign-In y registro email', () => {
 
   it('G-02/G-03/G-04/G-05 rechaza token inválido/expirado/audiencia/emisor', async () => {
     const { googleLogin } = setup(async () => {
-      throw new DomainError(
-        ErrorCodes.googleTokenInvalid,
-        401,
-        PublicMessages.googleTokenInvalid,
-      );
+      throw new DomainError(ErrorCodes.googleTokenInvalid, 401, PublicMessages.googleTokenInvalid);
     });
     await expect(
       googleLogin.execute({ idToken: 'expired', deviceId: 'd1', platform: 'android', meta }),

@@ -91,11 +91,9 @@ describe('session profile/list/revoke', () => {
     });
     expect(listed.items.some((s) => s.id === sessionId && s.current)).toBe(true);
 
-    const presence = new DevicePresenceNotifier(
-      identity,
-      clock,
-      { notifyDeviceSessionClosed: jest.fn() } as never,
-    );
+    const presence = new DevicePresenceNotifier(identity, clock, {
+      notifyDeviceSessionClosed: jest.fn(),
+    } as never);
     await new RevokeSessionUseCase(identity, identity, presence, clock).execute(
       {
         id: user.id,

@@ -38,19 +38,11 @@ export class GoogleIdTokenVerifier {
       });
       payload = verified.payload;
     } catch {
-      throw new DomainError(
-        ErrorCodes.googleTokenInvalid,
-        401,
-        PublicMessages.googleTokenInvalid,
-      );
+      throw new DomainError(ErrorCodes.googleTokenInvalid, 401, PublicMessages.googleTokenInvalid);
     }
     const issuer = typeof payload.iss === 'string' ? payload.iss : '';
     if (!GOOGLE_ISSUERS.has(issuer)) {
-      throw new DomainError(
-        ErrorCodes.googleTokenInvalid,
-        401,
-        PublicMessages.googleTokenInvalid,
-      );
+      throw new DomainError(ErrorCodes.googleTokenInvalid, 401, PublicMessages.googleTokenInvalid);
     }
     const subject = typeof payload.sub === 'string' ? payload.sub.trim() : '';
     const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
@@ -59,18 +51,10 @@ export class GoogleIdTokenVerifier {
       ? String(payload.aud[0] ?? '')
       : String(payload.aud ?? '');
     if (!subject || !email) {
-      throw new DomainError(
-        ErrorCodes.googleTokenInvalid,
-        401,
-        PublicMessages.googleTokenInvalid,
-      );
+      throw new DomainError(ErrorCodes.googleTokenInvalid, 401, PublicMessages.googleTokenInvalid);
     }
     if (!this.config.googleOAuthClientIds.includes(audience)) {
-      throw new DomainError(
-        ErrorCodes.googleTokenInvalid,
-        401,
-        PublicMessages.googleTokenInvalid,
-      );
+      throw new DomainError(ErrorCodes.googleTokenInvalid, 401, PublicMessages.googleTokenInvalid);
     }
     if (!emailVerified) {
       throw new DomainError(
