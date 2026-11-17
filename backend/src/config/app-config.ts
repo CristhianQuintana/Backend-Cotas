@@ -49,6 +49,10 @@ export interface AppConfig {
   fcmProjectId: string | null;
   fcmClientEmail: string | null;
   fcmPrivateKey: string | null;
+  /** Client IDs OAuth de Google autorizados (aud del ID token). */
+  googleOAuthClientIds: string[];
+  /** Si true, exige GOOGLE_OAUTH_CLIENT_IDS no vacío (producción). */
+  googleSignInEnabled: boolean;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

@@ -30,3 +30,6 @@ process.env.CATALOG_CACHE_TTL_SECONDS = '300';
 process.env.CATALOG_EPG_CACHE_TTL_SECONDS = '120';
 process.env.CATALOG_SYNC_INTERVAL_MS = '300000';
 process.env.CATALOG_SYNC_CONCURRENCY = '1';
+process.env.GOOGLE_SIGNIN_ENABLED = 'true';
+process.env.GOOGLE_OAUTH_CLIENT_IDS = 'test-android-client.apps.googleusercontent.com,test-tv-client.apps.googleusercontent.com';
+

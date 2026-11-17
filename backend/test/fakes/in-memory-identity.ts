@@ -11,6 +11,8 @@ import {
   type AcceptLineInput,
   type AcceptLineResult,
   type ApproveDeviceLinkChallengeInput,
+  type AuthIdentityRecord,
+  type AuthIdentityRepository,
   type CreateDeviceLinkChallengeInput,
   type CreateLocalUserInput,
   type DeviceLinkChallengeRecord,
@@ -53,11 +55,13 @@ export class InMemoryIdentity
     RecoveryCodeRepository,
     AuditRepository,
     LineAccess,
-    DeviceLinkRepository
+    DeviceLinkRepository,
+    AuthIdentityRepository
 {
   readonly users: UserRecord[] = [];
   readonly sessions: SessionRecord[] = [];
   readonly devices: MemoryDevice[] = [];
+  readonly identities: AuthIdentityRecord[] = [];
   readonly linkChallenges: DeviceLinkChallengeRecord[] = [];
   readonly recovery = new Map<string, { userId: string; usedAt: Date | null }>();
   readonly audits: Array<AuditEventView & { metadata?: AuditDraft['metadata'] }> = [];
@@ -71,8 +75,46 @@ export class InMemoryIdentity
     return this.users.find((user) => user.username === username) ?? null;
   }
 
+  async findByEmail(email: string): Promise<UserRecord | null> {
+    const normalized = email.trim().toLowerCase();
+    return this.users.find((user) => user.email?.toLowerCase() === normalized) ?? null;
+  }
+
   async findById(id: string): Promise<UserRecord | null> {
     return this.users.find((user) => user.id === id) ?? null;
+  }
+
+  async findByProviderSubject(
+    provider: string,
+    subject: string,
+  ): Promise<AuthIdentityRecord | null> {
+    return (
+      this.identities.find(
+        (row) => row.provider === provider && row.providerSubject === subject,
+      ) ?? null
+    );
+  }
+
+  async linkGoogleIdentity(input: {
+    userId: string;
+    subject: string;
+    email: string;
+    emailVerified: boolean;
+    now: Date;
+  }): Promise<AuthIdentityRecord> {
+    if (this.identities.some((row) => row.provider === 'google' && row.providerSubject === input.subject)) {
+      throw new DomainError(ErrorCodes.identityConflict, 409, PublicMessages.identityConflict);
+    }
+    const record: AuthIdentityRecord = {
+      id: newId(),
+      userId: input.userId,
+      provider: 'google',
+      providerSubject: input.subject,
+      providerEmail: input.email.toLowerCase(),
+      emailVerified: input.emailVerified,
+    };
+    this.identities.push(record);
+    return record;
   }
 
   async listUsers(page: number, limit: number): Promise<{ total: number; items: UserRecord[] }> {
@@ -87,8 +129,14 @@ export class InMemoryIdentity
     if (this.users.some((user) => user.username === input.username)) {
       throw new DomainError(ErrorCodes.conflict, 409, PublicMessages.conflict);
     }
+    const email = input.email?.trim().toLowerCase() || null;
+    if (email && this.users.some((user) => user.email?.toLowerCase() === email)) {
+      throw new DomainError(ErrorCodes.conflict, 409, PublicMessages.conflict);
+    }
     return addUser(this, {
       username: input.username,
+      email,
+      displayName: input.displayName ?? null,
       role: input.role,
       roles: [input.role],
       status: input.status,
@@ -750,12 +798,13 @@ export function addUser(
   store: InMemoryIdentity,
   user: Omit<
     UserRecord,
-    'id' | 'roles' | 'passwordHash' | 'lastLoginAt' | 'createdAt' | 'displayName'
+    'id' | 'roles' | 'passwordHash' | 'lastLoginAt' | 'createdAt' | 'displayName' | 'email'
   > & {
     id?: string;
     roles?: UserRecord['roles'];
     passwordHash?: string | null;
     displayName?: string | null;
+    email?: string | null;
     lastLoginAt?: Date | null;
     createdAt?: Date;
   },
@@ -763,6 +812,7 @@ export function addUser(
   const record: UserRecord = {
     id: user.id ?? newId(),
     username: user.username,
+    email: user.email ?? null,
     displayName: user.displayName ?? null,
     role: user.role,
     roles: user.roles ?? [user.role],

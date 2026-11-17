@@ -77,7 +77,10 @@ export class LoginUseCase {
 
   async execute(command: LoginCommand): Promise<LoginResult> {
     const username = command.username.trim();
-    const local = await this.users.findByUsername(username);
+    const looksLikeEmail = username.includes('@');
+    const local = looksLikeEmail
+      ? await this.users.findByEmail(username.toLowerCase())
+      : await this.users.findByUsername(username);
 
     if (local?.passwordHash) {
       return this.loginLocal(local, command);
@@ -86,6 +89,12 @@ export class LoginUseCase {
     if (local && isStaffRole(local.role)) {
       await this.passwords.verify(command.password, await this.passwords.dummyHash());
       await this.failLogin(command.meta, null, 'staff_without_password');
+    }
+
+    // Correo sin hash local: no enumerar; no intentar XUI con email.
+    if (looksLikeEmail) {
+      await this.passwords.verify(command.password, await this.passwords.dummyHash());
+      await this.failLogin(command.meta, null, 'email_unknown');
     }
 
     return this.loginCustomerLine(username, command);
@@ -119,9 +128,26 @@ export class LoginUseCase {
         };
       }
       await this.assertStaffMfa(user, command);
+      return this.issueSession(user, command.meta);
     }
 
-    return this.issueSession(user, command.meta);
+    const clientDeviceId =
+      command.deviceId?.trim() || fingerprintFromUserAgent(command.meta.userAgent);
+    let deviceId: string | undefined;
+    try {
+      deviceId = await this.lines.claimDeviceSlot({
+        userId: user.id,
+        clientDeviceId,
+        platform: mapPlatform(command.platform, command.meta.userAgent),
+        deviceName: command.deviceName ?? null,
+        maxDevices: this.config.deviceLimitFailsafe,
+        now: this.clock.now(),
+        onLimit: 'displace',
+      });
+    } catch {
+      deviceId = undefined;
+    }
+    return this.issueSession(user, command.meta, deviceId);
   }
 
   private async assertStaffMfa(user: UserRecord, command: LoginCommand): Promise<void> {

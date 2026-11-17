@@ -187,6 +187,22 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     fail('FCM_ENABLED');
   }
 
+  const googleOAuthClientIds = splitList(raw.GOOGLE_OAUTH_CLIENT_IDS ?? '').map((id) => id.trim());
+  const googleSignInEnabled =
+    raw.GOOGLE_SIGNIN_ENABLED === undefined
+      ? googleOAuthClientIds.length > 0
+      : bool(raw.GOOGLE_SIGNIN_ENABLED, 'GOOGLE_SIGNIN_ENABLED');
+  if (googleSignInEnabled && googleOAuthClientIds.length === 0) {
+    fail('GOOGLE_OAUTH_CLIENT_IDS');
+  }
+  if (nodeEnv === 'production' && googleSignInEnabled) {
+    for (const id of googleOAuthClientIds) {
+      if (id.includes(PLACEHOLDER) || id.length < 12) {
+        fail('GOOGLE_OAUTH_CLIENT_IDS');
+      }
+    }
+  }
+
   return {
     nodeEnv,
     port,
@@ -231,6 +247,8 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     fcmProjectId,
     fcmClientEmail,
     fcmPrivateKey,
+    googleOAuthClientIds,
+    googleSignInEnabled,
   };
 }
 

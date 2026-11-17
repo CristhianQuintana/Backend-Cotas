@@ -13,10 +13,35 @@ export const MFA_CIPHER = Symbol('MFA_CIPHER');
 
 export interface CreateLocalUserInput {
   username: string;
-  passwordHash: string;
+  passwordHash: string | null;
   role: UserRole;
   status: UserStatus;
   now: Date;
+  email?: string | null;
+  displayName?: string | null;
+  emailVerifiedAt?: Date | null;
+}
+
+export interface AuthIdentityRecord {
+  id: string;
+  userId: string;
+  provider: string;
+  providerSubject: string;
+  providerEmail: string | null;
+  emailVerified: boolean;
+}
+
+export const AUTH_IDENTITY_REPOSITORY = Symbol('AUTH_IDENTITY_REPOSITORY');
+
+export interface AuthIdentityRepository {
+  findByProviderSubject(provider: string, subject: string): Promise<AuthIdentityRecord | null>;
+  linkGoogleIdentity(input: {
+    userId: string;
+    subject: string;
+    email: string;
+    emailVerified: boolean;
+    now: Date;
+  }): Promise<AuthIdentityRecord>;
 }
 
 export interface UpdateLocalUserInput {
@@ -28,6 +53,7 @@ export interface UpdateLocalUserInput {
 
 export interface UserRepository {
   findByUsername(username: string): Promise<UserRecord | null>;
+  findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
   listUsers(page: number, limit: number): Promise<{ total: number; items: UserRecord[] }>;
   createLocalUser(input: CreateLocalUserInput): Promise<UserRecord>;

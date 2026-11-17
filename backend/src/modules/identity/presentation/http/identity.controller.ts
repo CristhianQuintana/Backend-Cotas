@@ -26,16 +26,26 @@ import {
   ConfirmMfaEnrollmentUseCase,
 } from '../../application/use-cases/mfa.use-cases';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
+import { GoogleLoginUseCase } from '../../application/use-cases/google-login.use-case';
+import { RegisterEmailUseCase } from '../../application/use-cases/register-email.use-case';
 import { GetProfileUseCase, LogoutUseCase } from '../../application/use-cases/session.use-cases';
 import { RefreshSessionUseCase } from '../../application/use-cases/refresh-session.use-case';
 import { GetSubscriptionUseCase } from '../../application/use-cases/subscription.use-case';
-import { ConfirmMfaRequestDto, LoginRequestDto, RefreshRequestDto } from './dto/auth.dto';
+import {
+  ConfirmMfaRequestDto,
+  GoogleLoginRequestDto,
+  LoginRequestDto,
+  RefreshRequestDto,
+  RegisterEmailRequestDto,
+} from './dto/auth.dto';
 
 @ApiTags('identity')
 @Controller('auth')
 export class IdentityController {
   constructor(
     @Inject(LoginUseCase) private readonly loginUseCase: LoginUseCase,
+    @Inject(GoogleLoginUseCase) private readonly googleLoginUseCase: GoogleLoginUseCase,
+    @Inject(RegisterEmailUseCase) private readonly registerEmailUseCase: RegisterEmailUseCase,
     @Inject(RefreshSessionUseCase) private readonly refreshUseCase: RefreshSessionUseCase,
     @Inject(LogoutUseCase) private readonly logoutUseCase: LogoutUseCase,
     @Inject(GetProfileUseCase) private readonly profileUseCase: GetProfileUseCase,
@@ -50,6 +60,34 @@ export class IdentityController {
   @Post('login')
   login(@Body() body: LoginRequestDto, @Req() req: Request) {
     return this.loginUseCase.execute({ ...body, meta: requestMeta(req) });
+  }
+
+  @Public()
+  @UseGuards(SensitiveRateLimitGuard)
+  @HttpCode(200)
+  @Post('register')
+  register(@Body() body: RegisterEmailRequestDto, @Req() req: Request) {
+    return this.registerEmailUseCase.execute({ ...body, meta: requestMeta(req) });
+  }
+
+  @Public()
+  @UseGuards(SensitiveRateLimitGuard)
+  @HttpCode(200)
+  @Post('google')
+  google(@Body() body: GoogleLoginRequestDto, @Req() req: Request) {
+    return this.googleLoginUseCase.execute({ ...body, meta: requestMeta(req) });
+  }
+
+  @Public()
+  @UseGuards(SensitiveRateLimitGuard)
+  @HttpCode(200)
+  @Post('google/link')
+  googleLink(@Body() body: GoogleLoginRequestDto, @Req() req: Request) {
+    return this.googleLoginUseCase.execute({
+      ...body,
+      linking: true,
+      meta: requestMeta(req),
+    });
   }
 
   @Public()

@@ -5,6 +5,8 @@ import { configureHttp } from '../../src/configure-http';
 import { PrismaService } from '../../src/infrastructure/database/prisma/prisma.service';
 import { AUDIT_REPOSITORY } from '../../src/modules/audit/domain/audit-repository';
 import {
+  AUTH_IDENTITY_REPOSITORY,
+  DEVICE_LINK_REPOSITORY,
   LINE_ACCESS,
   RECOVERY_CODE_REPOSITORY,
   SESSION_REPOSITORY,
@@ -56,6 +58,10 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
     .overrideProvider(RECOVERY_CODE_REPOSITORY)
     .useValue(identity)
     .overrideProvider(LINE_ACCESS)
+    .useValue(identity)
+    .overrideProvider(AUTH_IDENTITY_REPOSITORY)
+    .useValue(identity)
+    .overrideProvider(DEVICE_LINK_REPOSITORY)
     .useValue(identity)
     .overrideProvider(AUDIT_REPOSITORY)
     .useValue(identity)

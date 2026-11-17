@@ -38,20 +38,40 @@ API_BASE_URL = https://api.cotasperu.com/api/v1
 
 ## 3. Autenticación
 
+Hay **tres** formas de obtener sesión COTAS (siempre Bearer COTAS después):
+
+| Método | Endpoint | Notas |
+| --- | --- | --- |
+| Línea IPTV XUI (login normal) | `POST /auth/login` con username **sin** `@` | Compatibilidad; no cambiar en apps legacy |
+| Correo + contraseña COTAS | `POST /auth/login` con email, o `POST /auth/register` | Cuenta local Argon2 |
+| Google Sign-In | `POST /auth/google` (+ `/auth/google/link`) | Solo ID token; ver `INFORME_AUTH_GOOGLE_PLATAFORMAS.md` |
+
 ```http
 POST /auth/login
 Content-Type: application/json
 
 {
-  "username": "<linea>",
+  "username": "<linea-o-email>",
   "password": "<clave>",
   "deviceId": "<uuid-estable-del-aparato>",
   "platform": "android"
 }
 ```
 
+```http
+POST /auth/google
+{
+  "idToken": "<GOOGLE_ID_TOKEN>",
+  "deviceId": "<uuid-estable>",
+  "platform": "android"
+}
+```
+
 Respuesta típica: `accessToken`, `refreshToken`, `expiresIn`, `tokenType`.  
-`deviceId` estable es **recomendado** (UUID o id de instalación). Si falta, el login sigue funcionando con huella de User-Agent. Cupo = `maxConnections`; detalle en `docs/integraciones/cuenta-y-notificaciones.md`.
+`deviceId` estable es **recomendado** (UUID o id de instalación). Si falta, el login sigue funcionando con huella de User-Agent. Cupo = `maxConnections`; detalle en `docs/integraciones/cuenta-y-notificaciones.md`.  
+Configuración OAuth: `GOOGLE_CLOUD_SIGNIN.md`. Informe completo apps: `INFORME_AUTH_GOOGLE_PLATAFORMAS.md`.
+
+**Xtream Codes / catálogo de terceros:** lo hace la app hacia el proveedor; el backend no es proxy.
 
 ```http
 Authorization: Bearer <accessToken>

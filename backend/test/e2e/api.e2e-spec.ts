@@ -468,6 +468,8 @@ describe('API COTAS', () => {
     const document = createSwaggerDocument(app) as unknown as { paths: Record<string, unknown> };
     const serialized = JSON.stringify(document);
     expect(serialized).toContain('/api/v1/auth/login');
+    expect(serialized).toContain('/api/v1/auth/google');
+    expect(serialized).toContain('/api/v1/auth/register');
     expect(serialized).not.toContain('xui_test_password_not_real');
     expect(serialized).not.toContain('test-only-jwt-access-secret');
     expect(createHash('sha256').update(serialized).digest('hex')).toHaveLength(64);

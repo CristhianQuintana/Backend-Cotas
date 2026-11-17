@@ -61,6 +61,7 @@ import {
   TotpMfaService,
 } from './modules/identity/infrastructure/mfa/totp.service';
 import {
+  AUTH_IDENTITY_REPOSITORY,
   DEVICE_LINK_REPOSITORY,
   LINE_ACCESS,
   MFA_CIPHER,
@@ -71,6 +72,9 @@ import {
   TOKEN_SERVICE,
   USER_REPOSITORY,
 } from './modules/identity/domain/ports/identity.ports';
+import { GoogleIdTokenVerifier } from './modules/identity/infrastructure/google/google-id-token.verifier';
+import { GoogleLoginUseCase } from './modules/identity/application/use-cases/google-login.use-case';
+import { RegisterEmailUseCase } from './modules/identity/application/use-cases/register-email.use-case';
 import { PlaybackController } from './modules/playback/presentation/http/playback.controller';
 import { AuthorizePlaybackUseCase } from './modules/playback/application/authorize-playback.use-case';
 import { PlaybackMediaTicketStore } from './modules/playback/infrastructure/playback-media-ticket.store';
@@ -110,6 +114,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     { provide: RECOVERY_CODE_REPOSITORY, useExisting: PrismaIdentityStore },
     { provide: LINE_ACCESS, useExisting: PrismaIdentityStore },
     { provide: DEVICE_LINK_REPOSITORY, useExisting: PrismaIdentityStore },
+    { provide: AUTH_IDENTITY_REPOSITORY, useExisting: PrismaIdentityStore },
     PrismaAuditRepository,
     { provide: AUDIT_REPOSITORY, useExisting: PrismaAuditRepository },
     Argon2PasswordHasher,
@@ -135,6 +140,9 @@ import { MediaController } from './modules/media/presentation/http/media.control
         }),
     },
     LoginUseCase,
+    GoogleIdTokenVerifier,
+    GoogleLoginUseCase,
+    RegisterEmailUseCase,
     DeviceLinkUseCase,
     RefreshSessionUseCase,
     LogoutUseCase,

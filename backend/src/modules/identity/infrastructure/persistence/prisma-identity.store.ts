@@ -25,6 +25,8 @@ import {
   type AcceptLineInput,
   type AcceptLineResult,
   type ApproveDeviceLinkChallengeInput,
+  type AuthIdentityRecord,
+  type AuthIdentityRepository,
   type CreateDeviceLinkChallengeInput,
   type CreateLocalUserInput,
   DEVICE_INACTIVE_AFTER_SECONDS,
@@ -61,12 +63,85 @@ export class PrismaIdentityStore
     SessionRepository,
     RecoveryCodeRepository,
     LineAccess,
-    DeviceLinkRepository
+    DeviceLinkRepository,
+    AuthIdentityRepository
 {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(MFA_CIPHER) private readonly cipher: MfaSecretCipher,
   ) {}
+
+  async findByEmail(email: string): Promise<UserRecord | null> {
+    try {
+      const normalized = email.trim().toLowerCase();
+      const user = await this.prisma.user.findFirst({
+        where: { email: normalized, deletedAt: null },
+        include: userGraph,
+      });
+      return user ? toUser(user) : null;
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async findByProviderSubject(
+    provider: string,
+    subject: string,
+  ): Promise<AuthIdentityRecord | null> {
+    try {
+      const row = await this.prisma.authIdentity.findUnique({
+        where: { provider_providerSubject: { provider, providerSubject: subject } },
+      });
+      if (!row) {
+        return null;
+      }
+      return {
+        id: row.id,
+        userId: row.userId,
+        provider: row.provider,
+        providerSubject: row.providerSubject,
+        providerEmail: row.providerEmail,
+        emailVerified: row.emailVerified,
+      };
+    } catch (error) {
+      bubble(error);
+    }
+  }
+
+  async linkGoogleIdentity(input: {
+    userId: string;
+    subject: string;
+    email: string;
+    emailVerified: boolean;
+    now: Date;
+  }): Promise<AuthIdentityRecord> {
+    try {
+      const id = newId();
+      const row = await this.prisma.authIdentity.create({
+        data: {
+          id,
+          userId: input.userId,
+          provider: 'google',
+          providerSubject: input.subject,
+          providerEmail: input.email.toLowerCase(),
+          emailVerified: input.emailVerified,
+        },
+      });
+      return {
+        id: row.id,
+        userId: row.userId,
+        provider: row.provider,
+        providerSubject: row.providerSubject,
+        providerEmail: row.providerEmail,
+        emailVerified: row.emailVerified,
+      };
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        throw new DomainError(ErrorCodes.identityConflict, 409, PublicMessages.identityConflict);
+      }
+      bubble(error);
+    }
+  }
 
   async findByUsername(username: string): Promise<UserRecord | null> {
     try {
@@ -123,8 +198,11 @@ export class PrismaIdentityStore
           data: {
             id,
             username: input.username,
+            email: input.email?.trim().toLowerCase() || null,
+            displayName: input.displayName ?? null,
             passwordHash: input.passwordHash,
-            passwordChangedAt: input.now,
+            passwordChangedAt: input.passwordHash ? input.now : null,
+            emailVerifiedAt: input.emailVerifiedAt ?? null,
             status: input.status,
           },
         });
@@ -1079,6 +1157,7 @@ function toUser(user: UserGraph): UserRecord {
   return {
     id: user.id,
     username: user.username ?? '',
+    email: user.email,
     displayName: user.displayName,
     role: primaryRole(roles),
     roles: roles.length > 0 ? roles : (['CUSTOMER'] as UserRole[]),

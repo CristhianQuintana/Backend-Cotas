@@ -33,6 +33,10 @@ export const ErrorCodes = {
   deviceLinkInvalid: 'DEVICE_LINK_INVALID',
   deviceLinkExpired: 'DEVICE_LINK_EXPIRED',
   deviceLinkConsumed: 'DEVICE_LINK_CONSUMED',
+  googleTokenInvalid: 'GOOGLE_TOKEN_INVALID',
+  googleEmailUnverified: 'GOOGLE_EMAIL_UNVERIFIED',
+  accountLinkRequired: 'ACCOUNT_LINK_REQUIRED',
+  identityConflict: 'IDENTITY_CONFLICT',
 } as const;
 
 export const PublicMessages = {
@@ -63,4 +67,9 @@ export const PublicMessages = {
   deviceLinkInvalid: 'El código QR no es válido o ya no está pendiente.',
   deviceLinkExpired: 'El código QR expiró. Genere uno nuevo en el televisor.',
   deviceLinkConsumed: 'El código QR ya fue utilizado.',
+  googleTokenInvalid: 'El inicio de sesión con Google no es válido.',
+  googleEmailUnverified: 'El correo de Google no está verificado.',
+  accountLinkRequired:
+    'Ya existe una cuenta COTAS con ese correo. Confirme la vinculación con su contraseña.',
+  identityConflict: 'Esta identidad de Google ya está vinculada a otra cuenta.',
 } as const;

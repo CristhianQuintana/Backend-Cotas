@@ -91,6 +91,7 @@ model User {
   devices        Device[]
   mfaMethods     UserMfaMethod[]
   iptvAccounts   IptvAccount[]
+  authIdentities AuthIdentity[]
   reminders           AccountReminder[]
   auditLogs           AuditLog[]
   authChallenges      AuthChallenge[]
@@ -98,7 +99,27 @@ model User {
 
   @@index([status])
   @@index([deletedAt])
+  @@index([email])
   @@map("users")
+}
+
+/// Identidad federada (p. ej. Google). `provider_subject` = `sub` estable del IdP.
+model AuthIdentity {
+  id             String   @id @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  provider       String   @db.VarChar(32)
+  providerSubject String  @map("provider_subject") @db.VarChar(128)
+  providerEmail  String?  @map("provider_email") @db.VarChar(254)
+  emailVerified  Boolean  @default(false) @map("email_verified")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSubject])
+  @@index([userId])
+  @@index([provider, providerEmail])
+  @@map("auth_identities")
 }
 
 enum AccountReminderState {

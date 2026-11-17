@@ -1,0 +1,91 @@
+{
+  "info": {
+    "name": "COTAS Auth — correo + Google",
+    "description": "Contrato de autenticación COTAS para Android TV, Samsung TV y tercera app. Base: {{baseUrl}}",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://api.cotasperu.com/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "googleIdToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Login correo",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"usuario@correo.com\",\n  \"password\": \"correct-horse-battery\",\n  \"deviceId\": \"00000000-0000-4000-8000-000000000001\",\n  \"platform\": \"android\"\n}"
+        },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "Register email",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"usuario@correo.com\",\n  \"password\": \"correct-horse-battery\",\n  \"displayName\": \"Usuario Demo\",\n  \"deviceId\": \"00000000-0000-4000-8000-000000000001\",\n  \"platform\": \"android\"\n}"
+        },
+        "url": "{{baseUrl}}/auth/register"
+      }
+    },
+    {
+      "name": "Login Google",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idToken\": \"{{googleIdToken}}\",\n  \"deviceId\": \"00000000-0000-4000-8000-000000000001\",\n  \"platform\": \"android\"\n}"
+        },
+        "url": "{{baseUrl}}/auth/google"
+      }
+    },
+    {
+      "name": "Link Google",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"idToken\": \"{{googleIdToken}}\",\n  \"password\": \"correct-horse-battery\",\n  \"deviceId\": \"00000000-0000-4000-8000-000000000001\",\n  \"platform\": \"android\"\n}"
+        },
+        "url": "{{baseUrl}}/auth/google/link"
+      }
+    },
+    {
+      "name": "Refresh",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        },
+        "url": "{{baseUrl}}/auth/refresh"
+      }
+    },
+    {
+      "name": "Me",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/auth/me"
+      }
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/auth/logout"
+      }
+    }
+  ]
+}

@@ -1,11 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Length, Matches, ValidateIf } from 'class-validator';
 
 export class LoginRequestDto {
-  @ApiProperty({ example: 'viewer.demo', minLength: 3, maxLength: 64 })
+  @ApiProperty({
+    example: 'viewer.demo',
+    description:
+      'Usuario IPTV/XUI o correo de cuenta COTAS. Si contiene @ se trata como email local.',
+    minLength: 3,
+    maxLength: 254,
+  })
   @IsString()
-  @Length(3, 64)
-  @Matches(/^[a-zA-Z0-9._-]+$/u)
+  @Length(3, 254)
+  @Matches(/^[a-zA-Z0-9._@+-]+$/u)
   username!: string;
 
   @ApiProperty({ minLength: 1, maxLength: 128 })
@@ -58,6 +64,75 @@ export class RefreshRequestDto {
   @IsString()
   @Length(20, 200)
   refreshToken!: string;
+}
+
+export class GoogleLoginRequestDto {
+  @ApiProperty({ description: 'Google ID token (JWT) emitido por GIS / Google Sign-In' })
+  @IsString()
+  @Length(40, 8_000)
+  idToken!: string;
+
+  @ApiPropertyOptional({ description: 'Solo para POST /auth/google/link' })
+  @ValidateIf((body: GoogleLoginRequestDto) => typeof body.password === 'string')
+  @IsOptional()
+  @IsString()
+  @Length(1, 128)
+  password?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(8, 128)
+  @Matches(/^[0-9A-Za-z._:-]+$/u)
+  deviceId?: string;
+
+  @ApiPropertyOptional({ example: 'android' })
+  @IsOptional()
+  @IsString()
+  @Length(1, 32)
+  platform?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  deviceName?: string;
+}
+
+export class RegisterEmailRequestDto {
+  @ApiProperty({ example: 'usuario@correo.com' })
+  @IsEmail()
+  @Length(5, 254)
+  email!: string;
+
+  @ApiProperty({ minLength: 12, maxLength: 128 })
+  @IsString()
+  @Length(12, 128)
+  password!: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(1, 120)
+  displayName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(8, 128)
+  deviceId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(1, 32)
+  platform?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Length(1, 80)
+  deviceName?: string;
 }
 
 export class ConfirmMfaRequestDto {
