@@ -146,6 +146,13 @@ El backend **no** es proxy de Xtream ni de catálogo externo.
 Ver `docs/integraciones/GOOGLE_CLOUD_SIGNIN.md`.  
 Cada plataforma usa su Client ID; el backend acepta la lista en `GOOGLE_OAUTH_CLIENT_IDS`.
 
+**Pruebas (activos en el servidor):**
+
+- Móvil/TV: `652893487449-he614hftcqj3cspvsa5md846fp0vac95.apps.googleusercontent.com`
+- Web: `652893487449-jcgsi4g4eao15vjgp2vq91npfjqo4r4p.apps.googleusercontent.com`
+
+El backend debe tener `GOOGLE_SIGNIN_ENABLED=true` y ambos IDs en `GOOGLE_OAUTH_CLIENT_IDS`.
+
 ---
 
 ## 7. Checklist de integración por app

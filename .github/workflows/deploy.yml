@@ -99,4 +99,9 @@ jobs:
           STATE_DIR: /opt/cotas/state
           BACKUP_DIR: /opt/cotas/backups
           COMPOSE_DIR: ${{ github.workspace }}/backend
+          # Client IDs OAuth de pruebas (aud). El secret web va por GitHub Environment Secret
+          # GOOGLE_OAUTH_WEB_CLIENT_SECRET si hace falta; la verificación de ID token no lo usa.
+          DEPLOY_GOOGLE_SIGNIN_ENABLED: "true"
+          DEPLOY_GOOGLE_OAUTH_CLIENT_IDS: "652893487449-he614hftcqj3cspvsa5md846fp0vac95.apps.googleusercontent.com,652893487449-jcgsi4g4eao15vjgp2vq91npfjqo4r4p.apps.googleusercontent.com"
+          DEPLOY_GOOGLE_OAUTH_WEB_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_WEB_CLIENT_SECRET }}
         run: bash backend/scripts/server-deploy.sh "${{ steps.target.outputs.action }}"

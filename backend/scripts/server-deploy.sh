@@ -46,6 +46,41 @@ if ! grep -Eq '^REDIS_PASSWORD=' "$env_file"; then
   echo "Se añadió REDIS_PASSWORD al entorno del servidor (valor no mostrado)."
 fi
 
+# Upsert de claves en /opt/cotas/env/.env sin imprimir valores.
+upsert_env() {
+  key=$1
+  value=$2
+  tmp=$(mktemp)
+  if grep -Eq "^${key}=" "$env_file"; then
+    awk -v k="$key" -v v="$value" '
+      BEGIN { done=0 }
+      $0 ~ ("^" k "=") {
+        if (!done) { print k "=" v; done=1 }
+        next
+      }
+      { print }
+      END { if (!done) print k "=" v }
+    ' "$env_file" > "$tmp"
+    mv "$tmp" "$env_file"
+  else
+    printf '%s=%s\n' "$key" "$value" >> "$env_file"
+    rm -f "$tmp"
+  fi
+  chmod 600 "$env_file" || true
+}
+
+# Google Sign-In: el workflow puede inyectar Client IDs (aud). No requiere client secret
+# para verificar ID tokens (JWKS). El secret web, si existe, solo se escribe si se pasa.
+if [ -n "${DEPLOY_GOOGLE_OAUTH_CLIENT_IDS:-}" ]; then
+  upsert_env GOOGLE_SIGNIN_ENABLED "${DEPLOY_GOOGLE_SIGNIN_ENABLED:-true}"
+  upsert_env GOOGLE_OAUTH_CLIENT_IDS "$DEPLOY_GOOGLE_OAUTH_CLIENT_IDS"
+  echo "Google Sign-In: Client IDs actualizados en el entorno del servidor."
+fi
+if [ -n "${DEPLOY_GOOGLE_OAUTH_WEB_CLIENT_SECRET:-}" ]; then
+  upsert_env GOOGLE_OAUTH_WEB_CLIENT_SECRET "$DEPLOY_GOOGLE_OAUTH_WEB_CLIENT_SECRET"
+  echo "Google Sign-In: secret web actualizado en el entorno del servidor (valor no mostrado)."
+fi
+
 read_env() {
   key=$1
   fallback=$2

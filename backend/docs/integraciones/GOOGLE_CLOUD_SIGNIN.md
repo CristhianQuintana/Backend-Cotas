@@ -26,10 +26,19 @@ Registrar **todos** los Client IDs autorizados en el backend:
 
 ```bash
 GOOGLE_SIGNIN_ENABLED=true
-GOOGLE_OAUTH_CLIENT_IDS=<android-client-id>,<samsung-client-id>,<tercera-client-id>
+GOOGLE_OAUTH_CLIENT_IDS=<android-client-id>,<web-client-id>
 ```
 
 El backend valida que el claim `aud` del ID token esté en esa lista.
+
+### Client IDs de pruebas (entorno actual)
+
+| Plataforma | Client ID |
+| --- | --- |
+| App móvil / TV | `652893487449-he614hftcqj3cspvsa5md846fp0vac95.apps.googleusercontent.com` |
+| App web | `652893487449-jcgsi4g4eao15vjgp2vq91npfjqo4r4p.apps.googleusercontent.com` |
+
+El **client secret** web no se versiona: vive solo en `/opt/cotas/env/.env` (o secreto de GitHub `GOOGLE_OAUTH_WEB_CLIENT_SECRET`). La verificación del Google ID token en el backend **no** usa ese secret; solo la lista de Client IDs (`aud`).
 
 ## 3. Secretos
 

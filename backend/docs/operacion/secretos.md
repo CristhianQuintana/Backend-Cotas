@@ -16,8 +16,13 @@ Ningún valor real se pide por chat ni se guarda en Git. `.env` del servidor viv
 | `XUI_ALLOW_INSECURE_HTTP` | `true` solo si el panel interno es HTTP | No sirve para exponer la API a Internet |
 | `PUBLIC_CORS_ORIGINS` | Origen `https` autorizado | Compose lo copia a `CORS_ORIGINS`. Un origen `http` impide arrancar en producción |
 | `BACKEND_PORT` | Por defecto `3100`, solo en `127.0.0.1` | Publicación local de la API |
+| `GOOGLE_SIGNIN_ENABLED` | Mismo archivo (`true` en pruebas) | Activa `POST /auth/google` |
+| `GOOGLE_OAUTH_CLIENT_IDS` | Mismo archivo, lista CSV de Client IDs | Audiencias (`aud`) autorizadas del ID token |
+| `GOOGLE_OAUTH_WEB_CLIENT_SECRET` | Mismo archivo (opcional) | Solo si algún flujo web server-side lo requiere; **no** hace falta para verificar ID tokens |
 | `GITHUB_TOKEN` | Lo emite GitHub en el workflow | Publica y descarga la imagen. No se crea un token personal |
 | Token de registro del runner | Pantalla de GitHub, un solo uso | No es un secreto del archivo `.env` |
+
+El workflow `deploy` puede inyectar los Client IDs de pruebas vía `DEPLOY_GOOGLE_OAUTH_CLIENT_IDS`. El secret web, si existe, se toma de `secrets.GOOGLE_OAUTH_WEB_CLIENT_SECRET` (entorno `pruebas`) y no se imprime en logs.
 
 `npm run check:env`, ejecutado en el servidor con ese archivo y sin imprimir valores, confirma los nombres. El script de despliegue rechaza el archivo si todavía contiene `CHANGE_ME` o la contraseña local de desarrollo.
 
