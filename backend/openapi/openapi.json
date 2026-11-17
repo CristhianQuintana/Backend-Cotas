@@ -72,6 +72,78 @@
         ]
       }
     },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "IdentityController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterEmailRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/google": {
+      "post": {
+        "operationId": "IdentityController_google",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleLoginRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/google/link": {
+      "post": {
+        "operationId": "IdentityController_googleLink",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleLoginRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/auth/refresh": {
       "post": {
         "operationId": "IdentityController_refresh",
@@ -1495,8 +1567,9 @@
           "username": {
             "type": "string",
             "example": "viewer.demo",
+            "description": "Usuario IPTV/XUI o correo de cuenta COTAS. Si contiene @ se trata como email local.",
             "minLength": 3,
-            "maxLength": 64
+            "maxLength": 254
           },
           "password": {
             "type": "string",
@@ -1529,6 +1602,62 @@
         "required": [
           "username",
           "password"
+        ]
+      },
+      "RegisterEmailRequestDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "usuario@correo.com"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 128
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "deviceName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "GoogleLoginRequestDto": {
+        "type": "object",
+        "properties": {
+          "idToken": {
+            "type": "string",
+            "description": "Google ID token (JWT) emitido por GIS / Google Sign-In"
+          },
+          "password": {
+            "type": "string",
+            "description": "Solo para POST /auth/google/link"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "example": "android"
+          },
+          "deviceName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "idToken"
         ]
       },
       "RefreshRequestDto": {
