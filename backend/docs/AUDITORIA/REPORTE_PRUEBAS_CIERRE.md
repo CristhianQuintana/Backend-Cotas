@@ -36,7 +36,7 @@ Objetivo 80%: **no cumplido**.
 `npm audit --omit=dev` → **0 vulnerabilidades**
 
 ## No ejecutado (bloqueado por red/recursos)
-- Smoke/regresión A/B y carga HLS: **XUI `10.10.0.100` timeout** desde host y contenedor
+- Smoke/regresión A/B y carga HLS: **XUI (host privado de pruebas) timeout** desde host y contenedor
 - FCM recepción Android real
 - Staging remoto dedicado distinto de producción
 
