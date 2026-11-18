@@ -81,6 +81,13 @@ if [ -n "${DEPLOY_GOOGLE_OAUTH_WEB_CLIENT_SECRET:-}" ]; then
   echo "Google Sign-In: secret web actualizado en el entorno del servidor (valor no mostrado)."
 fi
 
+# LOGIN COTAS (línea XUI): solo peers de la red corporativa. Independiente de STREAM CODE
+# (cliente → XUI) y de correo/Google. Valor vacío = no se toca lo que ya haya en el .env.
+if [ -n "${DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS:-}" ]; then
+  upsert_env LOGIN_COTAS_ALLOWED_CIDRS "$DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS"
+  echo "LOGIN COTAS: rangos corporativos permitidos actualizados en el entorno del servidor."
+fi
+
 read_env() {
   key=$1
   fallback=$2

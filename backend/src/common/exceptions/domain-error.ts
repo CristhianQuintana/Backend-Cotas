@@ -37,6 +37,7 @@ export const ErrorCodes = {
   googleEmailUnverified: 'GOOGLE_EMAIL_UNVERIFIED',
   accountLinkRequired: 'ACCOUNT_LINK_REQUIRED',
   identityConflict: 'IDENTITY_CONFLICT',
+  loginNetworkRestricted: 'LOGIN_NETWORK_RESTRICTED',
 } as const;
 
 export const PublicMessages = {
@@ -72,4 +73,6 @@ export const PublicMessages = {
   accountLinkRequired:
     'Ya existe una cuenta COTAS con ese correo. Confirme la vinculación con su contraseña.',
   identityConflict: 'Esta identidad de Google ya está vinculada a otra cuenta.',
+  loginNetworkRestricted:
+    'El inicio de sesión COTAS solo está disponible desde la red corporativa.',
 } as const;

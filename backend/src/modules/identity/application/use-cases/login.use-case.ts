@@ -5,6 +5,7 @@ import {
   ErrorCodes,
   PublicMessages,
 } from '../../../../common/exceptions/domain-error';
+import { isAddressInCidrs } from '../../../../common/network/allowed-network';
 import { CLOCK, type Clock } from '../../../../common/utils/clock';
 import { newId } from '../../../../common/utils/ids';
 import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
@@ -190,6 +191,7 @@ export class LoginUseCase {
   }
 
   private async loginCustomerLine(username: string, command: LoginCommand): Promise<LoginResult> {
+    await this.assertCorporateNetwork(command.meta);
     const line = await this.xui.authenticate({ username, password: command.password });
     if (!line.authenticated) {
       await this.failLogin(command.meta, null, 'line');
@@ -229,6 +231,32 @@ export class LoginUseCase {
     });
 
     return this.issueSession(accepted.user, command.meta, deviceId);
+  }
+
+  /**
+   * Restricción exclusiva de LOGIN COTAS (línea XUI): solo peers TCP dentro de los CIDR
+   * corporativos. Se evalúa antes de llamar a XUI. Vacío = sin restricción.
+   * Usa el peer del socket, no `X-Forwarded-For`: el tráfico público (Nginx/Docker) llega
+   * desde loopback o el gateway del contenedor y queda fuera del rango corporativo.
+   */
+  private async assertCorporateNetwork(meta: RequestMeta): Promise<void> {
+    const cidrs = this.config.loginCotasAllowedCidrs ?? [];
+    if (cidrs.length === 0 || isAddressInCidrs(meta.peerAddress ?? null, cidrs)) {
+      return;
+    }
+    await this.audit.record({
+      action: 'auth.login',
+      result: 'failure',
+      actorUserId: null,
+      correlationId: meta.correlationId,
+      ipAddress: meta.ipAddress,
+      metadata: { reason: 'network_restricted', peer: meta.peerAddress ?? null },
+    });
+    throw new DomainError(
+      ErrorCodes.loginNetworkRestricted,
+      403,
+      PublicMessages.loginNetworkRestricted,
+    );
   }
 
   private async issueSession(

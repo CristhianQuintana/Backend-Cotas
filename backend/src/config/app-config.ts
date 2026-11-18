@@ -53,6 +53,11 @@ export interface AppConfig {
   googleOAuthClientIds: string[];
   /** Si true, exige GOOGLE_OAUTH_CLIENT_IDS no vacío (producción). */
   googleSignInEnabled: boolean;
+  /**
+   * LOGIN COTAS (línea XUI por `/auth/login`): rangos CIDR desde los que se acepta el peer TCP.
+   * Vacío = sin restricción. No afecta correo/Google, panel staff ni STREAM CODE (cliente → XUI).
+   */
+  loginCotasAllowedCidrs: string[];
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

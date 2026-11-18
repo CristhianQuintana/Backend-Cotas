@@ -5,6 +5,8 @@ import { sanitizeIp, sanitizeLogValue } from './redact';
 export interface RequestMeta {
   correlationId: string;
   ipAddress: string | null;
+  /** Peer TCP directo (no `X-Forwarded-For`): no falsificable por el cliente. */
+  peerAddress?: string | null;
   userAgent: string | null;
 }
 
@@ -13,6 +15,7 @@ export function requestMeta(req: Request): RequestMeta {
   return {
     correlationId: headerId ?? RequestContext.correlationId ?? 'unknown',
     ipAddress: sanitizeIp(req.ip),
+    peerAddress: sanitizeIp(req.socket?.remoteAddress),
     userAgent: sanitizeLogValue(req.header('user-agent') ?? '', 256) || null,
   };
 }

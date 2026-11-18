@@ -1,3 +1,4 @@
+import { isValidCidr } from '../common/network/allowed-network';
 import type { AppConfig, LogLevel, NodeEnv } from './app-config';
 
 const PLACEHOLDER = 'CHANGE_ME';
@@ -203,6 +204,13 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     }
   }
 
+  const loginCotasAllowedCidrs = splitList(raw.LOGIN_COTAS_ALLOWED_CIDRS ?? '');
+  for (const cidr of loginCotasAllowedCidrs) {
+    if (!isValidCidr(cidr)) {
+      fail('LOGIN_COTAS_ALLOWED_CIDRS');
+    }
+  }
+
   return {
     nodeEnv,
     port,
@@ -249,6 +257,7 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     fcmPrivateKey,
     googleOAuthClientIds,
     googleSignInEnabled,
+    loginCotasAllowedCidrs,
   };
 }
 
