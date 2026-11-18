@@ -29,7 +29,7 @@ Content-Type: application/json
 
 - Si `username` contiene `@`, el backend autentica contra cuenta local (Argon2).
 - Sin `@`, se conserva el **login normal XUI** (línea IPTV COTAS) — no modificar ese flujo en apps legacy.
-- **LOGIN COTAS (línea XUI) solo desde la red corporativa:** debe apuntar a la IP privada del servidor. Desde fuera responde `403 LOGIN_NETWORK_RESTRICTED`. Correo/Google y STREAM CODE (Xtream, directo al proveedor) no se ven afectados. Detalle: `docs/operacion/login-cotas-red-corporativa.md`.
+- **LOGIN COTAS (línea XUI) solo desde la red corporativa:** la app usa la **misma URL pública** (`https://api.cotasperu.com/api/v1`); el servidor decide por la red de origen (no usar IPs privadas ni `X-Forwarded-For`). Desde fuera responde `403 LOGIN_NETWORK_RESTRICTED`. Correo/Google y STREAM CODE (Xtream, directo al proveedor) no se ven afectados. Detalle: `docs/operacion/login-cotas-red-corporativa.md`.
 
 Registro de cuenta email (opcional, si el producto lo habilita):
 

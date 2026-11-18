@@ -15,7 +15,7 @@
 
 ## Destino de conexión de las apps
 
-LOGIN COTAS debe apuntar a la IP privada del servidor (red corporativa):
+Las apps usan la URL pública (`https://api.cotasperu.com/api/v1`): el backend decide por la red de origen real (ver la sección de Nginx más abajo) y las IPs privadas ya no son necesarias. La IP privada sigue funcionando como alternativa para quien esté dentro de la red corporativa:
 
 ```text
 LOGIN_COTAS_BASE_URL = http://10.10.0.31:3100/api/v1     # solo red corporativa
