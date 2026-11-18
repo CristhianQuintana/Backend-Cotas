@@ -23,6 +23,21 @@ LOGIN_COTAS_BASE_URL = http://10.10.0.31:3100/api/v1     # solo red corporativa
 
 Las apps pueden seguir usando `https://api.cotasperu.com/api/v1` para el resto de endpoints (refresh, catálogo, playback) con los tokens ya emitidos. Desde fuera de la red corporativa el login normal responde 403; correo/Google siguen disponibles.
 
+## Conexión a través de Nginx (dominio público o `server_name 10.10.0.31`)
+
+El backend ve como peer TCP a Nginx (loopback / gateway Docker `172.16.0.0/12`), nunca al usuario. Por eso, si la app
+entra por `https://api.cotasperu.com` (o por `http://10.10.0.31/`, puerto 80 de Nginx), la comprobación usa la
+**última** entrada de `X-Forwarded-For`: Nginx usa `$proxy_add_x_forwarded_for`, que añade el `remote_addr` real al
+final; las entradas anteriores las pone el cliente y se ignoran.
+
+- Solo se confía en la cabecera si el peer es loopback/Docker (`LOGIN_COTAS_TRUSTED_PROXY_CIDRS` añade proxies) y
+  `LOGIN_COTAS_TRUST_FORWARDED_FOR=true` (por defecto en el despliegue).
+- Un cliente externo que envíe `X-Forwarded-For: 10.10.x.x` sigue recibiendo 403 (su IP real queda de última entrada).
+- Si los equipos de la red corporativa llegan al dominio **con la IP pública de salida de la empresa** (NAT sin
+  hairpin/DNS interno), esa IP aparece como cliente y se rechaza: añada su CIDR a `LOGIN_COTAS_ALLOWED_CIDRS`
+  (p. ej. `10.10.0.0/16,<IP_publica_empresa>/32`) o use la IP privada en la app.
+- Diagnóstico de solo lectura: workflow `diag-login-network` (clasifica rechazos por tipo de origen sin imprimir IPs).
+
 ## Verificación
 
 | Prueba | Resultado esperado |

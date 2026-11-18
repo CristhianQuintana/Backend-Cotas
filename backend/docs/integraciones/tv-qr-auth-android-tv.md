@@ -96,7 +96,8 @@ para el límite de dispositivos de la línea.
 ## 3. Cancelar (opcional)
 
 `POST /auth/tv/qr/session/:sessionId/cancel` con `Authorization: Bearer <pollSecret>` → `200 { "status": "CANCELLED" }`.
-Idempotente. Úsalo al salir de la pantalla del QR.
+Idempotente. Úsalo al salir de la pantalla del QR. Si envías `Content-Type`, debe ser `application/json`
+(la API responde `415` a cualquier otro); envía cuerpo `{}`.
 
 ## Endpoints del celular (los usa la página web; documentados por completitud)
 

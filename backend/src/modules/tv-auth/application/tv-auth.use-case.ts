@@ -2,6 +2,11 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { RequestMeta } from '../../../common/logging/request-meta';
 import { DomainError, ErrorCodes, PublicMessages } from '../../../common/exceptions/domain-error';
+import {
+  DEFAULT_TRUSTED_PROXY_CIDRS,
+  isAddressInCidrs,
+  resolveClientAddress,
+} from '../../../common/network/allowed-network';
 import { CLOCK, type Clock } from '../../../common/utils/clock';
 import { newId } from '../../../common/utils/ids';
 import { APP_CONFIG, type AppConfig } from '../../../config/app-config';
@@ -128,7 +133,15 @@ export class TvAuthUseCase {
       tvClientDeviceIdHash: clientHash,
       platform: mapPlatform(input.platform),
       deviceName: input.deviceName?.trim() || null,
-      requestIpMasked: maskIp(meta.ipAddress),
+      requestIpMasked: maskIp(
+        resolveClientAddress({
+          peerAddress: meta.peerAddress ?? meta.ipAddress,
+          forwardedFor: meta.forwardedFor,
+          // Solo informativo (pantalla de confirmación): se confía en el proxy local (Nginx).
+          trustForwarded: true,
+          trustedProxyCidrs: DEFAULT_TRUSTED_PROXY_CIDRS,
+        }),
+      ),
       expiresAt,
       now,
     });
@@ -532,7 +545,8 @@ function invalidSession(): DomainError {
 }
 
 function maskIp(ip: string | null): string | null {
-  if (!ip) {
+  // Sin IP útil (p. ej. gateway Docker o loopback cuando no hay proxy identificado).
+  if (!ip || isAddressInCidrs(ip, DEFAULT_TRUSTED_PROXY_CIDRS)) {
     return null;
   }
   if (ip.includes(':')) {
