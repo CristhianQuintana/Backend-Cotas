@@ -1,0 +1,82 @@
+name: diag-login-correlation
+
+# Solo lectura. Muestra qué peer/X-Forwarded-For registró el backend para unas correlaciones de
+# LOGIN COTAS. Clasifica y enmascara las IPs (el repositorio es público).
+
+on:
+  workflow_dispatch:
+    inputs:
+      correlations:
+        description: "UUIDs de correlación separados por coma"
+        required: true
+      lan_prefix:
+        description: "Prefijo LAN esperado (ej. 192.168.105.) para comprobar coincidencia"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diag-login-correlation-pruebas
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Consultar auditoría por correlación
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+          CORRELATIONS: ${{ inputs.correlations }}
+          LAN_PREFIX: ${{ inputs.lan_prefix }}
+        run: |
+          set -eu
+          cd "$COMPOSE_DIR"
+          ln -sfn "$ENV_FILE" .env
+          pg_user=$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+          pg_db=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+          pg_user=${pg_user:-cotas}
+          pg_db=${pg_db:-cotas_dev}
+          list=$(printf '%s' "$CORRELATIONS" | tr -cd '0-9a-fA-F,-' | sed "s/,/','/g")
+          lan=$(printf '%s' "$LAN_PREFIX" | tr -cd '0-9.')
+          echo "=== LOGIN_COTAS_* efectivo ==="
+          grep -E '^LOGIN_COTAS_[A-Z_]+=' "$ENV_FILE" || true
+          echo "=== auditoría por correlación ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "
+            SELECT left(correlation_id,8) AS corr, created_at, result,
+                   metadata->>'reason' AS motivo,
+                   CASE WHEN p IS NULL THEN 'sin-peer'
+                        WHEN p ~ '^(127\.|::1)' THEN 'loopback'
+                        WHEN p ~ '^172\.(1[6-9]|2[0-9]|3[01])\.' THEN 'docker 172.16/12'
+                        WHEN p ~ '^10\.10\.' THEN 'corporativo 10.10.x.x'
+                        WHEN p ~ '^10\.' THEN 'privado 10.x (otro)'
+                        WHEN p ~ '^192\.168\.' THEN 'privado 192.168.x.x'
+                        ELSE 'publico' END AS peer_clase,
+                   regexp_replace(coalesce(p,''), '^(\d+\.\d+)\.\d+\.\d+$', '\1.x.x') AS peer_mask,
+                   ('$lan' <> '' AND p LIKE '$lan%') AS peer_coincide_lan,
+                   CASE WHEN f IS NULL THEN 'sin XFF'
+                        WHEN f ~ '^10\.10\.' THEN 'XFF corporativo'
+                        WHEN f ~ '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)' THEN 'XFF privado'
+                        ELSE 'XFF publico' END AS xff_clase,
+                   regexp_replace(coalesce(f,''), '^(\d+\.\d+)\.\d+\.\d+$', '\1.x.x') AS xff_mask,
+                   ('$lan' <> '' AND f LIKE '$lan%') AS xff_coincide_lan
+            FROM (SELECT correlation_id, created_at, result, metadata,
+                         metadata->>'peer' AS p, metadata->>'forwardedFor' AS f
+                  FROM audit_logs
+                  WHERE action='auth.login' AND correlation_id IN ('$list')) t
+            ORDER BY created_at;"
+          echo "=== resumen de rechazos recientes (24 h) por clase ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "
+            SELECT CASE WHEN p ~ '^172\.(1[6-9]|2[0-9]|3[01])\.' THEN 'docker 172.16/12'
+                        WHEN p ~ '^192\.168\.' THEN 'privado 192.168.x.x'
+                        WHEN p ~ '^10\.10\.' THEN 'corporativo 10.10.x.x'
+                        WHEN p ~ '^(127\.|::1)' THEN 'loopback' ELSE 'otro/publico' END AS peer_clase,
+                   count(*), max(created_at)
+            FROM (SELECT metadata->>'peer' AS p, created_at FROM audit_logs
+                  WHERE action='auth.login' AND metadata->>'reason'='network_restricted'
+                    AND created_at > now() - interval '24 hours') t
+            GROUP BY 1 ORDER BY 3 DESC;"
