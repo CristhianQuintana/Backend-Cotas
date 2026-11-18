@@ -5,7 +5,11 @@ import {
   ErrorCodes,
   PublicMessages,
 } from '../../../../common/exceptions/domain-error';
-import { isAddressInCidrs } from '../../../../common/network/allowed-network';
+import {
+  DEFAULT_TRUSTED_PROXY_CIDRS,
+  isAddressInCidrs,
+  resolveClientAddress,
+} from '../../../../common/network/allowed-network';
 import { CLOCK, type Clock } from '../../../../common/utils/clock';
 import { newId } from '../../../../common/utils/ids';
 import { APP_CONFIG, type AppConfig } from '../../../../config/app-config';
@@ -241,7 +245,19 @@ export class LoginUseCase {
    */
   private async assertCorporateNetwork(meta: RequestMeta): Promise<void> {
     const cidrs = this.config.loginCotasAllowedCidrs ?? [];
-    if (cidrs.length === 0 || isAddressInCidrs(meta.peerAddress ?? null, cidrs)) {
+    if (cidrs.length === 0) {
+      return;
+    }
+    const client = resolveClientAddress({
+      peerAddress: meta.peerAddress,
+      forwardedFor: meta.forwardedFor,
+      trustForwarded: this.config.loginCotasTrustForwardedFor === true,
+      trustedProxyCidrs: [
+        ...DEFAULT_TRUSTED_PROXY_CIDRS,
+        ...(this.config.loginCotasTrustedProxyCidrs ?? []),
+      ],
+    });
+    if (isAddressInCidrs(client, cidrs)) {
       return;
     }
     await this.audit.record({
@@ -250,7 +266,11 @@ export class LoginUseCase {
       actorUserId: null,
       correlationId: meta.correlationId,
       ipAddress: meta.ipAddress,
-      metadata: { reason: 'network_restricted', peer: meta.peerAddress ?? null },
+      metadata: {
+        reason: 'network_restricted',
+        peer: meta.peerAddress ?? null,
+        forwardedFor: meta.forwardedFor ?? null,
+      },
     });
     throw new DomainError(
       ErrorCodes.loginNetworkRestricted,

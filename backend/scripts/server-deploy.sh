@@ -87,6 +87,11 @@ if [ -n "${DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS:-}" ]; then
   upsert_env LOGIN_COTAS_ALLOWED_CIDRS "$DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS"
   echo "LOGIN COTAS: rangos corporativos permitidos actualizados en el entorno del servidor."
 fi
+# Confiar en X-Forwarded-For (solo desde proxies locales). Activar únicamente si Nginx lo sobrescribe.
+if [ -n "${DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR:-}" ]; then
+  upsert_env LOGIN_COTAS_TRUST_FORWARDED_FOR "$DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR"
+  echo "LOGIN COTAS: LOGIN_COTAS_TRUST_FORWARDED_FOR actualizado."
+fi
 
 read_env() {
   key=$1

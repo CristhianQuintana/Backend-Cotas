@@ -1,0 +1,76 @@
+name: diag-login-network
+
+# Solo lectura. Clasifica de dónde llegan los rechazos de LOGIN COTAS y cómo está publicado el
+# backend (Nginx / puertos). No imprime IPs completas, credenciales ni tokens.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diag-login-network-pruebas
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: [self-hosted, linux, cotas-pruebas]
+    environment: pruebas
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Clasificar rechazos y topología de red
+        env:
+          ENV_FILE: /opt/cotas/env/.env
+          COMPOSE_DIR: ${{ github.workspace }}/backend
+        run: |
+          set -eu
+          cd "$COMPOSE_DIR"
+          ln -sfn "$ENV_FILE" .env
+          pg_user=$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+          pg_db=$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | tail -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'" || true)
+          pg_user=${pg_user:-cotas}
+          pg_db=${pg_db:-cotas_dev}
+
+          echo "=== variables LOGIN COTAS (solo nombres/valores no secretos) ==="
+          grep -E '^(LOGIN_COTAS_[A-Z_]+|TRUST_PROXY|BACKEND_PORT)=' "$ENV_FILE" || echo "(ninguna)"
+
+          echo "=== rechazos network_restricted por clase de peer (48 h) ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "
+            SELECT CASE
+                     WHEN peer IS NULL THEN 'sin-peer'
+                     WHEN peer ~ '^(127\.|::1)' THEN 'loopback (Nginx en el host)'
+                     WHEN peer ~ '^172\.(1[6-9]|2[0-9]|3[01])\.' THEN 'docker 172.16/12'
+                     WHEN peer ~ '^10\.10\.' THEN 'corporativo 10.10.x.x'
+                     WHEN peer ~ '^10\.' THEN 'privado 10.x (otro)'
+                     WHEN peer ~ '^192\.168\.' THEN 'privado 192.168.x.x'
+                     ELSE 'publico' END AS peer_clase,
+                   CASE
+                     WHEN fwd IS NULL THEN 'sin X-Forwarded-For'
+                     WHEN fwd ~ '^10\.10\.' THEN 'XFF corporativo 10.10.x.x'
+                     WHEN fwd ~ '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)' THEN 'XFF privado (otro)'
+                     ELSE 'XFF publico' END AS xff_clase,
+                   count(*) AS n, max(occurred_at) AS ultimo
+            FROM (SELECT metadata->>'peer' AS peer, metadata->>'forwardedFor' AS fwd, occurred_at
+                  FROM audit_logs
+                  WHERE action='auth.login' AND metadata->>'reason'='network_restricted'
+                    AND occurred_at > now() - interval '48 hours') t
+            GROUP BY 1, 2 ORDER BY n DESC;"
+
+          echo "=== Nginx: directivas relevantes (sin certificados) ==="
+          if [ -d /etc/nginx ]; then
+            grep -RhsE '^\s*(listen|server_name|proxy_pass|proxy_set_header X-Forwarded-For|proxy_set_header X-Real-IP|real_ip_header|set_real_ip_from|allow|deny)\b' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | sed 's/^\s*//' | sort | uniq -c || true
+          else
+            echo "/etc/nginx no existe o no es legible para el runner"
+          fi
+
+          echo "=== publicación del puerto del backend ==="
+          docker compose port backend 3000 || true
+          cat /etc/docker/daemon.json 2>/dev/null | grep -E 'userland-proxy|iptables' || echo "daemon.json: sin userland-proxy/iptables explícito"
+
+          echo "=== bytes de intentos LOGIN COTAS aceptados vs rechazados (48 h) ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "
+            SELECT result, coalesce(metadata->>'reason','-') AS motivo, count(*)
+            FROM audit_logs
+            WHERE action='auth.login' AND occurred_at > now() - interval '48 hours'
+            GROUP BY 1, 2 ORDER BY 3 DESC;"

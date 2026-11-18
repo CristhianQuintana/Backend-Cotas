@@ -107,4 +107,7 @@ jobs:
           # LOGIN COTAS solo desde la red corporativa. Ajustable con la variable de entorno
           # LOGIN_COTAS_ALLOWED_CIDRS del environment `pruebas` (CSV de CIDR).
           DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS: ${{ vars.LOGIN_COTAS_ALLOWED_CIDRS || '10.10.0.0/16' }}
+          # Apagado por defecto. Activar (variable true) solo tras verificar que Nginx sobrescribe
+          # X-Forwarded-For con $remote_addr (ver docs/operacion/login-cotas-red-corporativa.md).
+          DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR: ${{ vars.LOGIN_COTAS_TRUST_FORWARDED_FOR || 'false' }}
         run: bash backend/scripts/server-deploy.sh "${{ steps.target.outputs.action }}"

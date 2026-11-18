@@ -9,11 +9,12 @@ import { FakeXui } from '../../../../../test/fakes/fake-xui';
 const device = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 const password = 'correct-horse-battery';
 
-function metaFor(peerAddress: string | null) {
+function metaFor(peerAddress: string | null, forwardedFor: string | null = null) {
   return {
     correlationId: '33333333-3333-4333-8333-333333333333',
     ipAddress: peerAddress,
     peerAddress,
+    forwardedFor,
     userAgent: 'jest-network',
   };
 }
@@ -56,14 +57,16 @@ describe('LOGIN COTAS restringido a red corporativa', () => {
     decrypt: (payload: string) => payload.replace(/^enc:/u, ''),
   };
 
-  function setup(cidrs: string[]) {
+  function setup(cidrs: string[], trustForwardedFor = false) {
     const config = {
       accessTokenTtlSeconds: 120,
       refreshTokenTtlSeconds: 3600,
       enrollmentTokenTtlSeconds: 600,
       deviceLimitFailsafe: 3,
       loginCotasAllowedCidrs: cidrs,
-    } as AppConfig;
+      loginCotasTrustForwardedFor: trustForwardedFor,
+      loginCotasTrustedProxyCidrs: [] as string[],
+    } as unknown as AppConfig;
     const identity = new InMemoryIdentity();
     const xui = new FakeXui();
     xui.lines.set('viewer.demo', password);
@@ -142,6 +145,54 @@ describe('LOGIN COTAS restringido a red corporativa', () => {
         }),
       ).rejects.toMatchObject({ statusCode: 403, code: ErrorCodes.loginNetworkRestricted });
     }
+  });
+
+  it('vía Nginx con X-Forwarded-For de confianza: corporativo entra, externo no', async () => {
+    const { login, xuiCalls } = setup(['10.10.0.0/16'], true);
+    const ok = await login.execute({
+      username: 'viewer.demo',
+      password,
+      deviceId: device,
+      platform: 'android',
+      meta: metaFor('172.18.0.1', '10.10.7.20'),
+    });
+    expect(ok.type).toBe('authenticated');
+    await expect(
+      login.execute({
+        username: 'viewer.demo',
+        password,
+        deviceId: device,
+        platform: 'android',
+        meta: metaFor('172.18.0.1', '203.0.113.9'),
+      }),
+    ).rejects.toMatchObject({ statusCode: 403, code: ErrorCodes.loginNetworkRestricted });
+    expect(xuiCalls()).toBe(1);
+  });
+
+  it('un cliente externo directo no puede falsificar X-Forwarded-For corporativo', async () => {
+    const { login } = setup(['10.10.0.0/16'], true);
+    await expect(
+      login.execute({
+        username: 'viewer.demo',
+        password,
+        deviceId: device,
+        platform: 'android',
+        meta: metaFor('203.0.113.9', '10.10.0.5'),
+      }),
+    ).rejects.toMatchObject({ statusCode: 403, code: ErrorCodes.loginNetworkRestricted });
+  });
+
+  it('con el flag apagado el X-Forwarded-For se ignora aunque venga de loopback', async () => {
+    const { login } = setup(['10.10.0.0/16'], false);
+    await expect(
+      login.execute({
+        username: 'viewer.demo',
+        password,
+        deviceId: device,
+        platform: 'android',
+        meta: metaFor('127.0.0.1', '10.10.0.5'),
+      }),
+    ).rejects.toMatchObject({ statusCode: 403, code: ErrorCodes.loginNetworkRestricted });
   });
 
   it('sin CIDR configurados no restringe (comportamiento anterior)', async () => {

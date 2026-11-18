@@ -58,6 +58,13 @@ export interface AppConfig {
    * Vacío = sin restricción. No afecta correo/Google, panel staff ni STREAM CODE (cliente → XUI).
    */
   loginCotasAllowedCidrs: string[];
+  /**
+   * Si true y el peer es un proxy de confianza, LOGIN COTAS usa la última entrada de
+   * `X-Forwarded-For`. Activar solo si Nginx SOBRESCRIBE la cabecera (`$remote_addr`).
+   */
+  loginCotasTrustForwardedFor: boolean;
+  /** Proxies adicionales de confianza (CIDR) además de loopback y Docker 172.16.0.0/12. */
+  loginCotasTrustedProxyCidrs: string[];
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

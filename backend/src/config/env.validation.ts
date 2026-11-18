@@ -210,6 +210,16 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
       fail('LOGIN_COTAS_ALLOWED_CIDRS');
     }
   }
+  const loginCotasTrustForwardedFor = bool(
+    raw.LOGIN_COTAS_TRUST_FORWARDED_FOR ?? 'false',
+    'LOGIN_COTAS_TRUST_FORWARDED_FOR',
+  );
+  const loginCotasTrustedProxyCidrs = splitList(raw.LOGIN_COTAS_TRUSTED_PROXY_CIDRS ?? '');
+  for (const cidr of loginCotasTrustedProxyCidrs) {
+    if (!isValidCidr(cidr)) {
+      fail('LOGIN_COTAS_TRUSTED_PROXY_CIDRS');
+    }
+  }
 
   return {
     nodeEnv,
@@ -258,6 +268,8 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     googleOAuthClientIds,
     googleSignInEnabled,
     loginCotasAllowedCidrs,
+    loginCotasTrustForwardedFor,
+    loginCotasTrustedProxyCidrs,
   };
 }
 
