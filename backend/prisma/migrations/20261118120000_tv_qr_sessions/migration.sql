@@ -1,4 +1,4 @@
--- Login TV por QR (módulo tv-auth). Aditiva: no altera tablas existentes.
+-- Login TV por QR (modulo tv-auth). Aditiva: no altera tablas existentes.
 DO $$ BEGIN
   CREATE TYPE "TvQrStatus" AS ENUM ('PENDING', 'AUTHORIZED', 'EXPIRED', 'CANCELLED', 'REJECTED');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
