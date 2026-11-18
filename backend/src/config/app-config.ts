@@ -65,6 +65,14 @@ export interface AppConfig {
   loginCotasTrustForwardedFor: boolean;
   /** Proxies adicionales de confianza (CIDR) además de loopback y Docker 172.16.0.0/12. */
   loginCotasTrustedProxyCidrs: string[];
+  /** Vigencia de una sesión QR de TV (segundos). */
+  tvQrTtlSeconds: number;
+  /** Intentos fallidos de código antes de bloquear la sesión QR. */
+  tvQrMaxAttempts: number;
+  /** Origen público HTTPS donde se sirve la página de autorización (null = no configurado). */
+  tvQrPublicBaseUrl: string | null;
+  /** Client ID web de Google para el botón de la página (debe estar en GOOGLE_OAUTH_CLIENT_IDS). */
+  tvQrGoogleClientId: string | null;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

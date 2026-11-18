@@ -33,3 +33,7 @@ process.env.CATALOG_SYNC_CONCURRENCY = '1';
 process.env.GOOGLE_SIGNIN_ENABLED = 'true';
 process.env.GOOGLE_OAUTH_CLIENT_IDS =
   'test-android-client.apps.googleusercontent.com,test-tv-client.apps.googleusercontent.com';
+process.env.TV_QR_TTL_SECONDS = '180';
+process.env.TV_QR_MAX_ATTEMPTS = '3';
+process.env.TV_QR_PUBLIC_BASE_URL = 'https://tv.test.local';
+process.env.TV_QR_GOOGLE_CLIENT_ID = 'test-tv-client.apps.googleusercontent.com';

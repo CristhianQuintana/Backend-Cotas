@@ -18,9 +18,15 @@ import { XUI_CLIENT } from '../../src/modules/integrations/xui/domain/models';
 import { FakeXui } from '../fakes/fake-xui';
 import { InMemoryAccountRemindersService } from '../fakes/in-memory-account-reminders';
 import { InMemoryIdentity } from '../fakes/in-memory-identity';
+import { InMemoryTvQr } from '../fakes/in-memory-tv-qr';
+import { FakeGoogleVerifier } from '../fakes/fake-google-verifier';
+import { GoogleIdTokenVerifier } from '../../src/modules/identity/infrastructure/google/google-id-token.verifier';
+import { TV_QR_REPOSITORY } from '../../src/modules/tv-auth/domain/tv-qr.ports';
 
 export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: boolean }) {
   const identity = new InMemoryIdentity();
+  const tvQr = new InMemoryTvQr();
+  const googleVerifier = new FakeGoogleVerifier();
   const xui = options?.xui ?? new FakeXui();
   const reminders = new InMemoryAccountRemindersService();
   const databaseUp = options?.databaseUp ?? true;
@@ -63,6 +69,10 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
     .useValue(identity)
     .overrideProvider(DEVICE_LINK_REPOSITORY)
     .useValue(identity)
+    .overrideProvider(TV_QR_REPOSITORY)
+    .useValue(tvQr)
+    .overrideProvider(GoogleIdTokenVerifier)
+    .useValue(googleVerifier)
     .overrideProvider(AUDIT_REPOSITORY)
     .useValue(identity)
     .overrideProvider(XUI_CLIENT)
@@ -76,5 +86,5 @@ export async function createTestApp(options?: { xui?: FakeXui; databaseUp?: bool
   const app = moduleRef.createNestApplication({ bodyParser: false });
   configureHttp(app);
   await app.init();
-  return { app: app as INestApplication, identity, xui, reminders };
+  return { app: app as INestApplication, identity, xui, reminders, tvQr };
 }

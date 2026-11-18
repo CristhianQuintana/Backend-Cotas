@@ -23,6 +23,7 @@ module.exports = {
     // Adaptadores I/O: cobertura por e2e/integración.
     '!src/modules/identity/infrastructure/persistence/prisma-identity.store.ts',
     '!src/modules/audit/infrastructure/prisma-audit.repository.ts',
+    '!src/modules/tv-auth/infrastructure/prisma-tv-qr.repository.ts',
     '!src/modules/integrations/xui/infrastructure/http/xui-http.client.ts',
   ],
   coverageDirectory: 'coverage',

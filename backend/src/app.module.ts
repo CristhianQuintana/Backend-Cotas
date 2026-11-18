@@ -79,6 +79,10 @@ import { PlaybackController } from './modules/playback/presentation/http/playbac
 import { AuthorizePlaybackUseCase } from './modules/playback/application/authorize-playback.use-case';
 import { PlaybackMediaTicketStore } from './modules/playback/infrastructure/playback-media-ticket.store';
 import { MediaController } from './modules/media/presentation/http/media.controller';
+import { TvAuthController } from './modules/tv-auth/presentation/http/tv-auth.controller';
+import { TvAuthUseCase } from './modules/tv-auth/application/tv-auth.use-case';
+import { PrismaTvQrRepository } from './modules/tv-auth/infrastructure/prisma-tv-qr.repository';
+import { TV_QR_REPOSITORY } from './modules/tv-auth/domain/tv-qr.ports';
 
 @Module({
   imports: [
@@ -100,6 +104,7 @@ import { MediaController } from './modules/media/presentation/http/media.control
     AccountRemindersController,
     DevicesController,
     DeviceLinkController,
+    TvAuthController,
     AdminUsersController,
     CatalogController,
     PlaybackController,
@@ -144,6 +149,9 @@ import { MediaController } from './modules/media/presentation/http/media.control
     GoogleLoginUseCase,
     RegisterEmailUseCase,
     DeviceLinkUseCase,
+    PrismaTvQrRepository,
+    { provide: TV_QR_REPOSITORY, useExisting: PrismaTvQrRepository },
+    TvAuthUseCase,
     RefreshSessionUseCase,
     LogoutUseCase,
     GetProfileUseCase,

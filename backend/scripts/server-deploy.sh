@@ -87,6 +87,16 @@ if [ -n "${DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS:-}" ]; then
   upsert_env LOGIN_COTAS_ALLOWED_CIDRS "$DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS"
   echo "LOGIN COTAS: rangos corporativos permitidos actualizados en el entorno del servidor."
 fi
+# Login TV por QR (tv-auth).
+if [ -n "${DEPLOY_TV_QR_PUBLIC_BASE_URL:-}" ]; then
+  upsert_env TV_QR_PUBLIC_BASE_URL "$DEPLOY_TV_QR_PUBLIC_BASE_URL"
+fi
+if [ -n "${DEPLOY_TV_QR_GOOGLE_CLIENT_ID:-}" ]; then
+  upsert_env TV_QR_GOOGLE_CLIENT_ID "$DEPLOY_TV_QR_GOOGLE_CLIENT_ID"
+fi
+if [ -n "${DEPLOY_TV_QR_TTL_SECONDS:-}" ]; then
+  upsert_env TV_QR_TTL_SECONDS "$DEPLOY_TV_QR_TTL_SECONDS"
+fi
 # Confiar en X-Forwarded-For (solo desde proxies locales). Activar únicamente si Nginx lo sobrescribe.
 if [ -n "${DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR:-}" ]; then
   upsert_env LOGIN_COTAS_TRUST_FORWARDED_FOR "$DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR"

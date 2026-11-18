@@ -107,6 +107,10 @@ jobs:
           # LOGIN COTAS solo desde la red corporativa. Ajustable con la variable de entorno
           # LOGIN_COTAS_ALLOWED_CIDRS del environment `pruebas` (CSV de CIDR).
           DEPLOY_LOGIN_COTAS_ALLOWED_CIDRS: ${{ vars.LOGIN_COTAS_ALLOWED_CIDRS || '10.10.0.0/16' }}
+          # Login TV por QR (módulo tv-auth). El Client ID web es público (no es el secreto).
+          DEPLOY_TV_QR_PUBLIC_BASE_URL: ${{ vars.TV_QR_PUBLIC_BASE_URL || 'https://api.cotasperu.com' }}
+          DEPLOY_TV_QR_GOOGLE_CLIENT_ID: ${{ vars.TV_QR_GOOGLE_CLIENT_ID || '652893487449-jcgsi4g4eao15vjgp2vq91npfjqo4r4p.apps.googleusercontent.com' }}
+          DEPLOY_TV_QR_TTL_SECONDS: ${{ vars.TV_QR_TTL_SECONDS || '180' }}
           # Apagado por defecto. Activar (variable true) solo tras verificar que Nginx sobrescribe
           # X-Forwarded-For con $remote_addr (ver docs/operacion/login-cotas-red-corporativa.md).
           DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR: ${{ vars.LOGIN_COTAS_TRUST_FORWARDED_FOR || 'false' }}

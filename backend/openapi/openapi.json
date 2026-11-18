@@ -614,6 +614,224 @@
         ]
       }
     },
+    "/api/v1/auth/tv/qr/session": {
+      "post": {
+        "operationId": "TvAuthController_createSession",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTvQrSessionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "tv-auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tv/qr/session/{sessionId}/status": {
+      "get": {
+        "operationId": "TvAuthController_status",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "tv-auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tv/qr/session/{sessionId}/cancel": {
+      "post": {
+        "operationId": "TvAuthController_cancel",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "tv-auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tv/qr/session/{sessionId}/info": {
+      "post": {
+        "operationId": "TvAuthController_info",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TvQrCodeBodyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "tv-auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tv/qr/session/{sessionId}/identify": {
+      "post": {
+        "operationId": "TvAuthController_identify",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TvQrIdentifyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "tv-auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tv/qr/session/{sessionId}/authorize": {
+      "post": {
+        "operationId": "TvAuthController_authorize",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TvQrIdentifyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "tv-auth"
+        ]
+      }
+    },
+    "/api/v1/auth/tv/qr/session/{sessionId}/reject": {
+      "post": {
+        "operationId": "TvAuthController_reject",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TvQrCodeBodyDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "tv-auth"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "operationId": "AdminUsersController_list",
@@ -1787,6 +2005,57 @@
         },
         "required": [
           "linkCode"
+        ]
+      },
+      "CreateTvQrSessionDto": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "description": "Identificador estable de instalación del televisor (UUID recomendado).",
+            "example": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+          },
+          "platform": {
+            "type": "string",
+            "example": "android-tv"
+          },
+          "deviceName": {
+            "type": "string",
+            "example": "Sala - Sony Bravia",
+            "description": "Nombre que verá el usuario en el teléfono al confirmar."
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      },
+      "TvQrCodeBodyDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Código temporal del QR (fragmento `#c=` de la URL de autorización)."
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "TvQrIdentifyDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Código temporal del QR (fragmento `#c=` de la URL de autorización)."
+          },
+          "idToken": {
+            "type": "string",
+            "description": "ID token de Google Sign-In (mismo formato que POST /auth/google)."
+          }
+        },
+        "required": [
+          "code",
+          "idToken"
         ]
       },
       "CreateAdminUserDto": {

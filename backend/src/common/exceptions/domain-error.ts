@@ -38,6 +38,11 @@ export const ErrorCodes = {
   accountLinkRequired: 'ACCOUNT_LINK_REQUIRED',
   identityConflict: 'IDENTITY_CONFLICT',
   loginNetworkRestricted: 'LOGIN_NETWORK_RESTRICTED',
+  tvQrInvalid: 'TV_QR_INVALID',
+  tvQrExpired: 'TV_QR_EXPIRED',
+  tvQrClosed: 'TV_QR_CLOSED',
+  tvQrLocked: 'TV_QR_LOCKED',
+  tvQrAccountNotFound: 'TV_QR_ACCOUNT_NOT_FOUND',
 } as const;
 
 export const PublicMessages = {
@@ -75,4 +80,10 @@ export const PublicMessages = {
   identityConflict: 'Esta identidad de Google ya está vinculada a otra cuenta.',
   loginNetworkRestricted:
     'El inicio de sesión COTAS solo está disponible desde la red corporativa.',
+  tvQrInvalid: 'La sesión QR no es válida.',
+  tvQrExpired: 'El código QR expiró. Genere uno nuevo en el televisor.',
+  tvQrClosed: 'Esta sesión QR ya no está pendiente.',
+  tvQrLocked: 'La sesión QR se bloqueó por demasiados intentos. Genere uno nuevo en el televisor.',
+  tvQrAccountNotFound:
+    'No existe una cuenta COTAS vinculada a esta cuenta de Google. Inicie sesión una vez con Google en la app COTAS.',
 } as const;

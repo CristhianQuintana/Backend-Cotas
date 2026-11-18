@@ -50,11 +50,11 @@ jobs:
                      WHEN fwd ~ '^10\.10\.' THEN 'XFF corporativo 10.10.x.x'
                      WHEN fwd ~ '^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)' THEN 'XFF privado (otro)'
                      ELSE 'XFF publico' END AS xff_clase,
-                   count(*) AS n, max(occurred_at) AS ultimo
-            FROM (SELECT metadata->>'peer' AS peer, metadata->>'forwardedFor' AS fwd, occurred_at
+                   count(*) AS n, max(created_at) AS ultimo
+            FROM (SELECT metadata->>'peer' AS peer, metadata->>'forwardedFor' AS fwd, created_at
                   FROM audit_logs
                   WHERE action='auth.login' AND metadata->>'reason'='network_restricted'
-                    AND occurred_at > now() - interval '48 hours') t
+                    AND created_at > now() - interval '48 hours') t
             GROUP BY 1, 2 ORDER BY n DESC;"
 
           echo "=== Nginx: directivas relevantes (sin certificados) ==="
@@ -72,5 +72,5 @@ jobs:
           docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "
             SELECT result, coalesce(metadata->>'reason','-') AS motivo, count(*)
             FROM audit_logs
-            WHERE action='auth.login' AND occurred_at > now() - interval '48 hours'
+            WHERE action='auth.login' AND created_at > now() - interval '48 hours'
             GROUP BY 1, 2 ORDER BY 3 DESC;"

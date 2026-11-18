@@ -392,3 +392,44 @@ model DeviceLinkChallenge {
   @@index([tvClientDeviceIdHash, status])
   @@map("device_link_challenges")
 }
+
+enum TvQrStatus {
+  PENDING
+  AUTHORIZED
+  EXPIRED
+  CANCELLED
+  REJECTED
+}
+
+/// Sesión de login TV por QR (módulo tv-auth). El código del QR y el secreto de sondeo
+/// del televisor se guardan solo como hash SHA-256.
+model TvQrSession {
+  id                   String         @id @db.Uuid
+  codeHash             String         @unique @map("code_hash") @db.VarChar(64)
+  pollSecretHash       String         @map("poll_secret_hash") @db.VarChar(64)
+  /// Identificador de instalación del TV (no secreto).
+  tvClientDeviceId     String         @map("tv_client_device_id") @db.VarChar(128)
+  tvClientDeviceIdHash String         @map("tv_client_device_id_hash") @db.VarChar(64)
+  platform             DevicePlatform
+  deviceName           String?        @map("device_name") @db.VarChar(80)
+  /// IP del TV enmascarada (solo para mostrarla en la pantalla de confirmación).
+  requestIpMasked      String?        @map("request_ip_masked") @db.VarChar(64)
+  status               TvQrStatus     @default(PENDING)
+  /// Motivo del cierre: user_cancelled, user_rejected, too_many_attempts, expired.
+  statusReason         String?        @map("status_reason") @db.VarChar(32)
+  failedAttempts       Int            @default(0) @map("failed_attempts")
+  expiresAt            DateTime       @map("expires_at") @db.Timestamptz(3)
+  authorizedAt         DateTime?      @map("authorized_at") @db.Timestamptz(3)
+  /// Instante en que el TV recibió las credenciales (una sola vez).
+  deliveredAt          DateTime?      @map("delivered_at") @db.Timestamptz(3)
+  closedAt             DateTime?      @map("closed_at") @db.Timestamptz(3)
+  /// Cuenta COTAS vinculada al autorizar (sin FK: el historial no bloquea el borrado de usuarios).
+  userId               String?        @map("user_id") @db.Uuid
+  /// Fila devices reclamada para este TV al autorizar.
+  deviceId             String?        @map("device_id") @db.Uuid
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([status, expiresAt])
+  @@index([tvClientDeviceIdHash, status])
+  @@map("tv_qr_sessions")
+}

@@ -204,6 +204,24 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     }
   }
 
+  const tvQrTtlSeconds = integer(raw.TV_QR_TTL_SECONDS ?? '180', 'TV_QR_TTL_SECONDS', 30, 900);
+  const tvQrMaxAttempts = integer(raw.TV_QR_MAX_ATTEMPTS ?? '5', 'TV_QR_MAX_ATTEMPTS', 1, 20);
+  const tvQrPublicBaseUrl = parseTvQrBaseUrl(
+    raw.TV_QR_PUBLIC_BASE_URL,
+    nodeEnv,
+    port,
+    'TV_QR_PUBLIC_BASE_URL',
+  );
+  const tvQrGoogleClientId = (raw.TV_QR_GOOGLE_CLIENT_ID ?? '').trim() || null;
+  if (
+    tvQrGoogleClientId &&
+    googleSignInEnabled &&
+    !googleOAuthClientIds.includes(tvQrGoogleClientId)
+  ) {
+    // El ID token emitido a la página debe pasar el mismo allowlist de audiencias de /auth/google.
+    fail('TV_QR_GOOGLE_CLIENT_ID');
+  }
+
   const loginCotasAllowedCidrs = splitList(raw.LOGIN_COTAS_ALLOWED_CIDRS ?? '');
   for (const cidr of loginCotasAllowedCidrs) {
     if (!isValidCidr(cidr)) {
@@ -270,6 +288,10 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     loginCotasAllowedCidrs,
     loginCotasTrustForwardedFor,
     loginCotasTrustedProxyCidrs,
+    tvQrTtlSeconds,
+    tvQrMaxAttempts,
+    tvQrPublicBaseUrl,
+    tvQrGoogleClientId,
   };
 }
 
@@ -292,6 +314,31 @@ function minLength(value: string, name: string, min: number): void {
   if (value.length < min) {
     fail(name);
   }
+}
+
+function parseTvQrBaseUrl(
+  value: string | undefined,
+  nodeEnv: NodeEnv,
+  port: number,
+  name: string,
+): string | null {
+  const raw = (value ?? '').trim();
+  if (raw.length === 0) {
+    return nodeEnv === 'production' ? null : `http://localhost:${port}`;
+  }
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return fail(name);
+  }
+  if (url.protocol !== 'https:' && !(nodeEnv !== 'production' && url.protocol === 'http:')) {
+    return fail(name);
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    return fail(name);
+  }
+  return `${url.origin}${url.pathname.replace(/\/+$/u, '')}`;
 }
 
 function integer(value: string | undefined, name: string, min: number, max: number): number {
