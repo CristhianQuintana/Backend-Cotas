@@ -44,7 +44,7 @@ jobs:
           list=$(printf '%s' "$CORRELATIONS" | tr -cd '0-9a-fA-F,-' | sed "s/,/','/g")
           lan=$(printf '%s' "$LAN_PREFIX" | tr -cd '0-9.')
           echo "=== LOGIN_COTAS_* efectivo ==="
-          grep -E '^LOGIN_COTAS_[A-Z_]+=' "$ENV_FILE" || true
+          grep -E '^LOGIN_COTAS_TRUST_FORWARDED_FOR=' "$ENV_FILE" || true
           echo "=== auditoría por correlación ==="
           docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "
             SELECT left(correlation_id,8) AS corr, created_at, result,
