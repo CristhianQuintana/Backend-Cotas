@@ -88,3 +88,16 @@ jobs:
                   WHERE action='auth.login' AND metadata->>'reason'='network_restricted'
                     AND created_at > now() - interval '24 hours') t
             GROUP BY 1 ORDER BY 4 DESC LIMIT 12;"
+
+          echo "=== direcciones del bloque propio 192.141.98.x que fueron rechazadas (48 h) ==="
+          docker compose exec -T postgres psql -U "$pg_user" -d "$pg_db" -c "
+            SELECT eff AS origen, count(*) AS n, min(created_at) AS primero, max(created_at) AS ultimo
+            FROM (SELECT created_at,
+                         CASE WHEN metadata->>'peer' ~ '^(127\.|::1|172\.(1[6-9]|2[0-9]|3[01])\.)'
+                              THEN coalesce(metadata->>'forwardedFor', metadata->>'peer')
+                              ELSE metadata->>'peer' END AS eff
+                  FROM audit_logs
+                  WHERE action='auth.login' AND metadata->>'reason'='network_restricted'
+                    AND created_at > now() - interval '48 hours') t
+            WHERE eff LIKE '192.141.98.%'
+            GROUP BY 1 ORDER BY 4 DESC LIMIT 20;"
