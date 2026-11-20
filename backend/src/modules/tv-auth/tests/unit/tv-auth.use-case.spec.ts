@@ -439,8 +439,8 @@ describe('tv-auth: login TV por QR', () => {
     expect(anaDevices.items.map((d) => d.deviceName).sort()).toEqual(['TV Cuarto', 'TV Sala']);
   });
 
-  it('cupo de dispositivos lleno: DEVICE_LIMIT y la sesión sigue PENDING (reintentable)', async () => {
-    const { useCase, makeUser, create } = setup();
+  it('cupo de dispositivos lleno: Google NO se bloquea; entra el nuevo TV y sale el menos reciente', async () => {
+    const { useCase, makeUser, create, identity } = setup();
     const ana = await makeUser('ana', { maxConnections: 1 });
     const first = await create(TV_A, 'TV Sala');
     await useCase.authorize(
@@ -449,14 +449,11 @@ describe('tv-auth: login TV por QR', () => {
     );
     await useCase.getStatus({ sessionId: first.sessionId, pollSecret: first.pollSecret }, meta);
     const second = await create(TV_B, 'TV Cuarto');
-    await expectDomain(
-      useCase.authorize(
-        { sessionId: second.sessionId, code: second.code, idToken: ana.idToken },
-        meta,
-      ),
-      ErrorCodes.deviceLimit,
-      403,
+    const result = await useCase.authorize(
+      { sessionId: second.sessionId, code: second.code, idToken: ana.idToken },
+      meta,
     );
+    expect(result.status).toBe('AUTHORIZED');
     expect(
       (
         await useCase.getStatus(
@@ -464,7 +461,22 @@ describe('tv-auth: login TV por QR', () => {
           meta,
         )
       ).status,
-    ).toBe('PENDING');
+    ).toBe('AUTHORIZED');
+    const devices = await identity.listDevices(ana.user.id, null);
+    expect(devices.items.map((d) => d.deviceName)).toEqual(['TV Cuarto']);
+  });
+
+  it('cupo lleno y el mismo TV vuelve a vincularse (dispositivo ya conocido): tampoco se bloquea', async () => {
+    const { useCase, makeUser, create } = setup();
+    const ana = await makeUser('ana', { maxConnections: 1 });
+    for (const name of ['TV Sala', 'TV Sala']) {
+      const s = await create(TV_A, name);
+      const r = await useCase.authorize(
+        { sessionId: s.sessionId, code: s.code, idToken: ana.idToken },
+        meta,
+      );
+      expect(r.status).toBe('AUTHORIZED');
+    }
   });
 
   it('identidad Google: token inválido, cuenta inexistente, correo sin vincular y personal', async () => {

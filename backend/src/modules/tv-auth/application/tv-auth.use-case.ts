@@ -325,7 +325,8 @@ export class TvAuthUseCase {
     );
     const deviceName =
       session.deviceName ?? (session.platform === 'TV' ? 'Televisor' : 'Dispositivo TV');
-    // Si el cupo está lleno falla con DEVICE_LIMIT y la sesión sigue PENDING (reintentable).
+    // Iniciar sesión con Google nunca se bloquea por cupo: este televisor entra siempre y, si el
+    // cupo está lleno, se cierra el aparato visto hace más tiempo.
     const deviceId = await this.lines.claimDeviceSlot({
       userId: user.id,
       clientDeviceId: session.tvClientDeviceId,
@@ -333,7 +334,7 @@ export class TvAuthUseCase {
       deviceName,
       maxDevices,
       now,
-      onLimit: 'reject',
+      onLimit: 'replace',
     });
 
     // Un solo ganador: el código es de un solo uso. El perdedor no revoca el dispositivo (podría

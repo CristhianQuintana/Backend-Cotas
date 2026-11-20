@@ -91,7 +91,7 @@ las primeras credenciales, inicia una sesión QR nueva. Con sondeos simultáneos
 
 A partir de aquí el televisor usa la API como cualquier app: `Authorization: Bearer <accessToken>`, `POST /auth/refresh`
 con `refreshToken` (rotación), `POST /auth/logout`. El televisor aparece en `GET /devices` con su `deviceName` y cuenta
-para el límite de dispositivos de la línea.
+para el límite de dispositivos de la línea. Con Google/QR el acceso nunca se rechaza por cupo: si está lleno, se cierra el dispositivo visto hace más tiempo.
 
 ## 3. Cancelar (opcional)
 
@@ -146,7 +146,6 @@ Formato estándar `{ statusCode, code, message, correlationId }`.
 | 400  | `VALIDATION_ERROR`        | Cuerpo/parámetros inválidos                                         |
 | 401  | `UNAUTHORIZED`            | Falta `Authorization: Bearer <pollSecret>`                          |
 | 401  | `GOOGLE_TOKEN_INVALID`    | ID token de Google inválido o de otra audiencia                     |
-| 403  | `DEVICE_LIMIT`            | Cupo de dispositivos lleno (la sesión sigue `PENDING`, reintentable) |
 | 404  | `TV_QR_INVALID`           | Sesión inexistente, secreto o código incorrecto                     |
 | 404  | `TV_QR_ACCOUNT_NOT_FOUND` | Cuenta Google sin cuenta COTAS vinculada                            |
 | 409  | `TV_QR_CLOSED`            | La sesión ya no está pendiente (código ya usado, cancelada…)        |

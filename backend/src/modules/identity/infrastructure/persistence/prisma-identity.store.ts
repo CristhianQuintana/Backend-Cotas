@@ -421,6 +421,16 @@ export class PrismaIdentityStore
               deviceName: input.deviceName?.trim().slice(0, 80) || existing.deviceName,
             },
           });
+          if (input.onLimit === 'replace') {
+            await evictLeastRecentDevicesInTx(
+              tx,
+              input.userId,
+              input.maxDevices,
+              input.now,
+              existing.id,
+            );
+            return existing.id;
+          }
           await enforceDeviceQuotaInTx(tx, input.userId, input.maxDevices, input.now, null);
           const stillActive = await tx.device.findFirst({
             where: { id: existing.id, userId: input.userId, status: 'ACTIVE' },
@@ -449,14 +459,24 @@ export class PrismaIdentityStore
                 { field: 'limit', rules: [String(input.maxDevices)] },
               ]);
             }
-            // Login clave: libera hueco cerrando un aparato más nuevo (antiguos se priorizan).
-            await enforceDeviceQuotaInTx(
-              tx,
-              input.userId,
-              Math.max(input.maxDevices - 1, 0),
-              input.now,
-              null,
-            );
+            if (input.onLimit === 'replace') {
+              await evictLeastRecentDevicesInTx(
+                tx,
+                input.userId,
+                input.maxDevices,
+                input.now,
+                null,
+              );
+            } else {
+              // Login clave: libera hueco cerrando un aparato más nuevo (antiguos se priorizan).
+              await enforceDeviceQuotaInTx(
+                tx,
+                input.userId,
+                Math.max(input.maxDevices - 1, 0),
+                input.now,
+                null,
+              );
+            }
           }
         }
 
@@ -1275,6 +1295,46 @@ async function revokeOrphanDevicesInTx(
     revoked += 1;
   }
   return revoked;
+}
+
+/**
+ * Hace sitio para un aparato que SIEMPRE debe entrar (login con Google): conserva como máximo
+ * `maxDevices - 1` aparatos distintos de `keepDeviceId` y cierra (con sus sesiones) los vistos hace
+ * más tiempo. Nunca revoca `keepDeviceId`.
+ */
+async function evictLeastRecentDevicesInTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  maxDevices: number | null,
+  now: Date,
+  keepDeviceId: string | null,
+): Promise<number> {
+  if (maxDevices === null) {
+    return 0;
+  }
+  const maxOthers = Math.max(0, Math.trunc(maxDevices) - 1);
+  const others = (
+    await tx.device.findMany({
+      where: { userId, status: 'ACTIVE' },
+      orderBy: [{ lastSeenAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
+    })
+  ).filter((row) => row.id !== keepDeviceId);
+  const excess = others.length - maxOthers;
+  if (excess <= 0) {
+    return 0;
+  }
+  const toRevoke = others.slice(0, excess);
+  for (const row of toRevoke) {
+    await tx.device.update({
+      where: { id: row.id },
+      data: { status: 'REVOKED', revokedAt: now },
+    });
+    await tx.userSession.updateMany({
+      where: { deviceId: row.id, userId, revokedAt: null },
+      data: { revokedAt: now, revokeReason: 'SECURITY' },
+    });
+  }
+  return toRevoke.length;
 }
 
 async function enforceDeviceQuotaInTx(

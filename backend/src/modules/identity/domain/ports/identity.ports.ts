@@ -79,8 +79,10 @@ export interface DeviceRegistrationInput {
    * Cupo lleno + aparato nuevo:
    * - `displace` (default, login clave): libera hueco cerrando un aparato más nuevo (los antiguos se priorizan).
    * - `reject` (QR approve): 403 DEVICE_LIMIT para que el móvil elija qué revocar.
+   * - `replace` (Google / QR con Google): nunca falla por cupo; el aparato que inicia sesión
+   *   siempre entra y se cierra el aparato visto hace más tiempo (el menos reciente) si hace falta.
    */
-  onLimit?: 'displace' | 'reject';
+  onLimit?: 'displace' | 'reject' | 'replace';
 }
 
 export type DeviceLinkStatusCode = 'PENDING' | 'APPROVED' | 'EXPIRED' | 'DENIED' | 'CONSUMED';

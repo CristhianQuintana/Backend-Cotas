@@ -261,7 +261,7 @@ Authorization: Bearer <accessToken>
 
 - Cada TV autorizado ocupa **un dispositivo** de la cuenta. El cupo es `maxConnections` de la línea.
 - `GET /auth/me` → `connectedSessions` / `maxDevices` (mostrar “x/y”). `GET /devices` → `used`, `limit`, `items`. `DELETE /devices/{id}` cierra un dispositivo.
-- Si el cupo está lleno al autorizar, la **página del celular** muestra `DEVICE_LIMIT` y la sesión del TV sigue `PENDING`: el usuario libera un dispositivo y vuelve a pulsar Autorizar mientras el QR siga vigente. El TV no necesita lógica especial; si el QR expira, genera otro.
+- **El acceso con Google/QR no se bloquea por cupo.** Si el cupo está lleno al autorizar, el TV nuevo entra y el servidor cierra el dispositivo visto hace más tiempo (con sus sesiones; ese aparato recibirá `401`/`403` en su siguiente llamada). `DEVICE_LIMIT` ya no se devuelve en este flujo.
 - Si el TV ya autenticado es expulsado (otro dispositivo lo desplazó o el usuario lo cerró), sus llamadas darán `401`/`403`: volver al acceso con un mensaje claro.
 
 ### 5.3 Catálogo y reproducción

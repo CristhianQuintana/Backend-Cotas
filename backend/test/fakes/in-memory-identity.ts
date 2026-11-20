@@ -332,6 +332,10 @@ export class InMemoryIdentity
       existing.inactiveNotifiedAt = null;
       existing.platform = input.platform;
       existing.deviceName = input.deviceName?.trim().slice(0, 80) || existing.deviceName;
+      if (input.onLimit === 'replace') {
+        this.evictLeastRecentInMemory(input.userId, input.maxDevices, input.now, existing.id);
+        return existing.id;
+      }
       this.enforceInMemory(input.userId, input.maxDevices, input.now, null);
       if (existing.status !== 'ACTIVE') {
         const used = this.devices.filter(
@@ -355,7 +359,11 @@ export class InMemoryIdentity
             { field: 'limit', rules: [String(input.maxDevices)] },
           ]);
         }
-        this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
+        if (input.onLimit === 'replace') {
+          this.evictLeastRecentInMemory(input.userId, input.maxDevices, input.now, null);
+        } else {
+          this.enforceInMemory(input.userId, Math.max(input.maxDevices - 1, 0), input.now, null);
+        }
       }
     }
     const created: MemoryDevice = {
@@ -734,6 +742,39 @@ export class InMemoryIdentity
       }
       device.status = 'REVOKED';
       device.revokedAt = now;
+    }
+  }
+
+  private evictLeastRecentInMemory(
+    userId: string,
+    maxDevices: number | null,
+    now: Date,
+    keepDeviceId: string | null,
+  ): void {
+    if (maxDevices === null) {
+      return;
+    }
+    const maxOthers = Math.max(0, Math.trunc(maxDevices) - 1);
+    const others = this.devices
+      .filter(
+        (device) =>
+          device.userId === userId && device.status === 'ACTIVE' && device.id !== keepDeviceId,
+      )
+      .sort(
+        (a, b) =>
+          (a.lastSeenAt?.getTime() ?? 0) - (b.lastSeenAt?.getTime() ?? 0) ||
+          a.createdAt.getTime() - b.createdAt.getTime(),
+      );
+    const excess = others.length - maxOthers;
+    for (const row of others.slice(0, Math.max(excess, 0))) {
+      row.status = 'REVOKED';
+      row.revokedAt = now;
+      for (const session of this.sessions) {
+        if (session.deviceId === row.id && session.userId === userId && !session.revokedAt) {
+          session.revokedAt = now;
+          session.revocationReason = 'SECURITY';
+        }
+      }
     }
   }
 
