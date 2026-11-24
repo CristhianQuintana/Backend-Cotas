@@ -76,6 +76,24 @@ describe('validateEnv', () => {
     expect(() => validateEnv(env)).toThrow('CORS_ORIGINS');
   });
 
+  it('LOGIN DEMO: exige base URL, usuario y contraseña cuando está activo', () => {
+    const incomplete = valid();
+    incomplete.DEMO_LOGIN_ENABLED = 'true';
+    expect(() => validateEnv(incomplete)).toThrow('DEMO_LOGIN_USERNAME');
+
+    const ready = valid();
+    ready.DEMO_LOGIN_ENABLED = 'true';
+    ready.DEMO_LOGIN_USERNAME = 'demo123';
+    ready.DEMO_LOGIN_PASSWORD = 'demo123';
+    ready.DEMO_XUI_BASE_URL = 'http://10.10.0.29';
+    ready.DEMO_XUI_ALLOW_INSECURE_HTTP = 'true';
+    const config = validateEnv(ready);
+    expect(config.demoLoginEnabled).toBe(true);
+    expect(config.demoLoginUsername).toBe('demo123');
+    expect(config.demoXuiBaseUrl).toBe('http://10.10.0.29');
+    expect(config.demoXuiAllowedStreamHosts).toEqual(['10.10.0.29']);
+  });
+
   it('permite orígenes http en production solo con CORS_ALLOW_INSECURE_HTTP', () => {
     const denied = valid();
     denied.NODE_ENV = 'production';

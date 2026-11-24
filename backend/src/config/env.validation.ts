@@ -239,6 +239,32 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     }
   }
 
+  const demoLoginEnabled = bool(raw.DEMO_LOGIN_ENABLED ?? 'false', 'DEMO_LOGIN_ENABLED');
+  const demoLoginUsername = (raw.DEMO_LOGIN_USERNAME ?? '').trim() || null;
+  const demoLoginPassword = (raw.DEMO_LOGIN_PASSWORD ?? '').trim() || null;
+  let demoXuiBaseUrl: string | null = null;
+  let demoXuiAllowedStreamHosts: string[] = [];
+  if (demoLoginEnabled) {
+    if (!demoLoginUsername || demoLoginUsername.includes('@') || demoLoginUsername.length > 64) {
+      fail('DEMO_LOGIN_USERNAME');
+    }
+    if (!demoLoginPassword || demoLoginPassword.includes(PLACEHOLDER)) {
+      fail('DEMO_LOGIN_PASSWORD');
+    }
+    const demoAllowInsecure =
+      raw.DEMO_XUI_ALLOW_INSECURE_HTTP === 'true' || raw.XUI_ALLOW_INSECURE_HTTP === 'true';
+    const demoUrl = parseXuiBaseUrl(
+      required(raw.DEMO_XUI_BASE_URL, 'DEMO_XUI_BASE_URL'),
+      nodeEnv,
+      demoAllowInsecure,
+    );
+    demoXuiBaseUrl = demoUrl.origin;
+    demoXuiAllowedStreamHosts = splitList(raw.DEMO_XUI_ALLOWED_STREAM_HOSTS ?? '');
+    if (demoXuiAllowedStreamHosts.length === 0) {
+      demoXuiAllowedStreamHosts = [demoUrl.hostname];
+    }
+  }
+
   return {
     nodeEnv,
     port,
@@ -292,6 +318,11 @@ export function validateEnv(raw: NodeJS.ProcessEnv): AppConfig {
     tvQrMaxAttempts,
     tvQrPublicBaseUrl,
     tvQrGoogleClientId,
+    demoLoginEnabled,
+    demoXuiBaseUrl,
+    demoLoginUsername,
+    demoLoginPassword,
+    demoXuiAllowedStreamHosts,
   };
 }
 

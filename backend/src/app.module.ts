@@ -24,6 +24,7 @@ import { FcmPushService } from './modules/notifications/fcm-push.service';
 import { HealthController } from './modules/health/health.controller';
 import { HealthService } from './modules/health/health.service';
 import { XuiHttpClient } from './modules/integrations/xui/infrastructure/http/xui-http.client';
+import { RoutingXuiClient } from './modules/integrations/xui/infrastructure/http/routing-xui.client';
 import { XUI_CLIENT } from './modules/integrations/xui/domain/models';
 import { SensitiveRateLimitGuard } from './common/guards/sensitive-rate-limit.guard';
 import { AccessTokenGuard } from './modules/identity/presentation/guards/access-token.guard';
@@ -134,15 +135,30 @@ import { TV_QR_REPOSITORY } from './modules/tv-auth/domain/tv-qr.ports';
     {
       provide: XUI_CLIENT,
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig) =>
-        new XuiHttpClient({
+      useFactory: (config: AppConfig) => {
+        const primary = new XuiHttpClient({
           baseUrl: config.xuiBaseUrl,
           username: config.xuiUsername,
           password: config.xuiPassword,
           timeoutMs: config.xuiTimeoutMs,
           maxResponseBytes: config.xuiMaxResponseBytes,
           allowedStreamHosts: config.xuiAllowedStreamHosts,
-        }),
+        });
+        if (!config.demoLoginEnabled || !config.demoXuiBaseUrl || !config.demoLoginUsername) {
+          return primary;
+        }
+        const demo = new XuiHttpClient({
+          baseUrl: config.demoXuiBaseUrl,
+          // El XUI demo autentica con la línea del abonado; estas credenciales solo se usan
+          // si alguna llamada interna omite credentials (no aplica al flujo demo).
+          username: config.demoLoginUsername,
+          password: config.demoLoginPassword ?? config.demoLoginUsername,
+          timeoutMs: config.xuiTimeoutMs,
+          maxResponseBytes: config.xuiMaxResponseBytes,
+          allowedStreamHosts: config.demoXuiAllowedStreamHosts,
+        });
+        return new RoutingXuiClient(primary, demo, config.demoLoginUsername);
+      },
     },
     LoginUseCase,
     GoogleIdTokenVerifier,

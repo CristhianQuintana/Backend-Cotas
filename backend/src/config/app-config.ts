@@ -73,6 +73,16 @@ export interface AppConfig {
   tvQrPublicBaseUrl: string | null;
   /** Client ID web de Google para el botón de la página (debe estar en GOOGLE_OAUTH_CLIENT_IDS). */
   tvQrGoogleClientId: string | null;
+  /**
+   * LOGIN DEMO: línea de prueba en un XUI aparte. Si está activo, ese username omite la
+   * restricción CIDR de LOGIN COTAS y las llamadas XUI de ese abonado van a `demoXuiBaseUrl`.
+   */
+  demoLoginEnabled: boolean;
+  demoXuiBaseUrl: string | null;
+  demoLoginUsername: string | null;
+  /** Si no es null, exige coincidencia exacta antes de consultar el XUI demo. */
+  demoLoginPassword: string | null;
+  demoXuiAllowedStreamHosts: string[];
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

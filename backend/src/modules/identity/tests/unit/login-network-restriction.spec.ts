@@ -57,7 +57,11 @@ describe('LOGIN COTAS restringido a red corporativa', () => {
     decrypt: (payload: string) => payload.replace(/^enc:/u, ''),
   };
 
-  function setup(cidrs: string[], trustForwardedFor = false) {
+  function setup(
+    cidrs: string[],
+    trustForwardedFor = false,
+    demo?: { username: string; password: string },
+  ) {
     const config = {
       accessTokenTtlSeconds: 120,
       refreshTokenTtlSeconds: 3600,
@@ -66,10 +70,18 @@ describe('LOGIN COTAS restringido a red corporativa', () => {
       loginCotasAllowedCidrs: cidrs,
       loginCotasTrustForwardedFor: trustForwardedFor,
       loginCotasTrustedProxyCidrs: [] as string[],
+      demoLoginEnabled: !!demo,
+      demoXuiBaseUrl: demo ? 'http://demo.xui.test' : null,
+      demoLoginUsername: demo?.username ?? null,
+      demoLoginPassword: demo?.password ?? null,
+      demoXuiAllowedStreamHosts: demo ? ['demo.xui.test'] : [],
     } as unknown as AppConfig;
     const identity = new InMemoryIdentity();
     const xui = new FakeXui();
     xui.lines.set('viewer.demo', password);
+    if (demo) {
+      xui.lines.set(demo.username, demo.password);
+    }
     let xuiCalls = 0;
     const originalAuthenticate = xui.authenticate.bind(xui);
     xui.authenticate = async (input) => {
@@ -205,6 +217,64 @@ describe('LOGIN COTAS restringido a red corporativa', () => {
       meta: metaFor('203.0.113.9'),
     });
     expect(result.type).toBe('authenticated');
+  });
+
+  it('LOGIN DEMO: permite demo123 desde red externa y consulta XUI', async () => {
+    const { login, xuiCalls, identity } = setup(['10.10.0.0/16'], false, {
+      username: 'demo123',
+      password: 'demo123',
+    });
+    const result = await login.execute({
+      username: 'demo123',
+      password: 'demo123',
+      deviceId: device,
+      platform: 'android',
+      meta: metaFor('203.0.113.9'),
+    });
+    expect(result.type).toBe('authenticated');
+    expect(xuiCalls()).toBe(1);
+    expect(
+      identity.audits.some(
+        (audit) =>
+          audit.action === 'auth.login' &&
+          audit.result === 'success' &&
+          (audit.metadata as { demo?: boolean; auth?: string } | undefined)?.demo === true &&
+          (audit.metadata as { auth?: string } | undefined)?.auth === 'xui_demo',
+      ),
+    ).toBe(true);
+  });
+
+  it('LOGIN DEMO: contraseña incorrecta desde fuera no es network_restricted', async () => {
+    const { login, xuiCalls } = setup(['10.10.0.0/16'], false, {
+      username: 'demo123',
+      password: 'demo123',
+    });
+    await expect(
+      login.execute({
+        username: 'demo123',
+        password: 'wrong-password',
+        deviceId: device,
+        platform: 'android',
+        meta: metaFor('203.0.113.9'),
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 401,
+      code: ErrorCodes.invalidCredentials,
+    });
+    expect(xuiCalls()).toBe(0);
+  });
+
+  it('LOGIN DEMO desactivado: demo123 sigue sujeto al CIDR corporativo', async () => {
+    const { login } = setup(['10.10.0.0/16']);
+    await expect(
+      login.execute({
+        username: 'demo123',
+        password: 'demo123',
+        deviceId: device,
+        platform: 'android',
+        meta: metaFor('203.0.113.9'),
+      }),
+    ).rejects.toMatchObject({ statusCode: 403, code: ErrorCodes.loginNetworkRestricted });
   });
 
   it('no afecta el login por correo ni el personal con contraseña local desde fuera', async () => {

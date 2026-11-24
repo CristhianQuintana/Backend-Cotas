@@ -102,6 +102,26 @@ if [ -n "${DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR:-}" ]; then
   upsert_env LOGIN_COTAS_TRUST_FORWARDED_FOR "$DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR"
   echo "LOGIN COTAS: LOGIN_COTAS_TRUST_FORWARDED_FOR actualizado."
 fi
+# LOGIN DEMO: línea de prueba en XUI aparte; omite CIDR corporativo.
+if [ -n "${DEPLOY_DEMO_LOGIN_ENABLED:-}" ]; then
+  upsert_env DEMO_LOGIN_ENABLED "$DEPLOY_DEMO_LOGIN_ENABLED"
+fi
+if [ -n "${DEPLOY_DEMO_XUI_BASE_URL:-}" ]; then
+  upsert_env DEMO_XUI_BASE_URL "$DEPLOY_DEMO_XUI_BASE_URL"
+fi
+if [ -n "${DEPLOY_DEMO_LOGIN_USERNAME:-}" ]; then
+  upsert_env DEMO_LOGIN_USERNAME "$DEPLOY_DEMO_LOGIN_USERNAME"
+fi
+if [ -n "${DEPLOY_DEMO_LOGIN_PASSWORD:-}" ]; then
+  upsert_env DEMO_LOGIN_PASSWORD "$DEPLOY_DEMO_LOGIN_PASSWORD"
+  echo "LOGIN DEMO: credenciales actualizadas en el entorno del servidor (valor no mostrado)."
+fi
+if [ -n "${DEPLOY_DEMO_XUI_ALLOW_INSECURE_HTTP:-}" ]; then
+  upsert_env DEMO_XUI_ALLOW_INSECURE_HTTP "$DEPLOY_DEMO_XUI_ALLOW_INSECURE_HTTP"
+fi
+if [ -n "${DEPLOY_DEMO_XUI_ALLOWED_STREAM_HOSTS:-}" ]; then
+  upsert_env DEMO_XUI_ALLOWED_STREAM_HOSTS "$DEPLOY_DEMO_XUI_ALLOWED_STREAM_HOSTS"
+fi
 
 read_env() {
   key=$1

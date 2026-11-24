@@ -195,10 +195,21 @@ export class LoginUseCase {
   }
 
   private async loginCustomerLine(username: string, command: LoginCommand): Promise<LoginResult> {
-    await this.assertCorporateNetwork(command.meta);
+    const demoUser = this.isDemoUsername(username);
+    if (demoUser) {
+      // Fuera o dentro de la red corporativa: la cuenta demo siempre puede intentar login.
+      if (
+        this.config.demoLoginPassword !== null &&
+        command.password !== this.config.demoLoginPassword
+      ) {
+        await this.failLogin(command.meta, null, 'demo_password');
+      }
+    } else {
+      await this.assertCorporateNetwork(command.meta);
+    }
     const line = await this.xui.authenticate({ username, password: command.password });
     if (!line.authenticated) {
-      await this.failLogin(command.meta, null, 'line');
+      await this.failLogin(command.meta, null, demoUser ? 'demo_line' : 'line');
     }
 
     const maxDevices = resolveDeviceLimit(line.maxConnections, this.config.deviceLimitFailsafe);
@@ -234,12 +245,22 @@ export class LoginUseCase {
       now: this.clock.now(),
     });
 
-    return this.issueSession(accepted.user, command.meta, deviceId);
+    return this.issueSession(accepted.user, command.meta, deviceId, demoUser);
+  }
+
+  /** Username de la línea demo (`DEMO_LOGIN_ENABLED` + `DEMO_LOGIN_USERNAME`). */
+  private isDemoUsername(username: string): boolean {
+    return (
+      this.config.demoLoginEnabled === true &&
+      !!this.config.demoLoginUsername &&
+      username === this.config.demoLoginUsername
+    );
   }
 
   /**
    * Restricción exclusiva de LOGIN COTAS (línea XUI): solo peers TCP dentro de los CIDR
    * corporativos. Se evalúa antes de llamar a XUI. Vacío = sin restricción.
+   * La cuenta demo (`DEMO_LOGIN_*`) omite esta comprobación.
    * Usa el peer del socket, no `X-Forwarded-For`: el tráfico público (Nginx/Docker) llega
    * desde loopback o el gateway del contenedor y queda fuera del rango corporativo.
    */
@@ -283,6 +304,7 @@ export class LoginUseCase {
     user: UserRecord,
     meta: RequestMeta,
     deviceId?: string,
+    demo = false,
   ): Promise<Extract<LoginResult, { type: 'authenticated' }>> {
     const now = this.clock.now();
     const refreshToken = this.tokens.generateRefreshToken();
@@ -311,7 +333,11 @@ export class LoginUseCase {
         actorUserId: user.id,
         correlationId: meta.correlationId,
         ipAddress: meta.ipAddress,
-        metadata: { role: user.role, auth: user.passwordHash ? 'local' : 'xui' },
+        metadata: {
+          role: user.role,
+          auth: user.passwordHash ? 'local' : demo ? 'xui_demo' : 'xui',
+          demo,
+        },
       },
       { deviceId: deviceId ?? null },
     );

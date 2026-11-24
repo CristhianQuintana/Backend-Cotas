@@ -37,3 +37,4 @@ process.env.TV_QR_TTL_SECONDS = '180';
 process.env.TV_QR_MAX_ATTEMPTS = '3';
 process.env.TV_QR_PUBLIC_BASE_URL = 'https://tv.test.local';
 process.env.TV_QR_GOOGLE_CLIENT_ID = 'test-tv-client.apps.googleusercontent.com';
+process.env.DEMO_LOGIN_ENABLED = 'false';
