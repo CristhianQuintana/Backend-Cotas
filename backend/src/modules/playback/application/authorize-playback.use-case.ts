@@ -38,6 +38,7 @@ export class AuthorizePlaybackUseCase {
     meta: RequestMeta,
   ): Promise<PlaybackReference> {
     const credentials = await this.lines.credentialsFor(user.id);
+    const streamCtx = this.streamContext(credentials);
     const selected = await this.select(input, credentials);
     if (!selected) {
       await this.audit.record({
@@ -60,7 +61,7 @@ export class AuthorizePlaybackUseCase {
       streamId: selected.id,
       title: selected.name,
       server,
-      allowedHosts: this.config.xuiAllowedStreamHosts,
+      allowedHosts: streamCtx.allowedHosts,
       username: credentials.username,
       password: credentials.password,
       containerExtension: selected.containerExtension,
@@ -68,16 +69,12 @@ export class AuthorizePlaybackUseCase {
 
     let proxied: PlaybackReference = reference;
     try {
-      const lanHost = lanHostFromBase(this.config.xuiBaseUrl);
+      const lanHost = lanHostFromBase(streamCtx.baseUrl);
       // En test no hay XUI real: el ticket apunta a la URL construida.
       const upstream =
         this.config.nodeEnv === 'test'
           ? reference.streamUrl
-          : await resolveStreamUpstream(
-              reference.streamUrl,
-              lanHost,
-              this.config.xuiAllowedStreamHosts,
-            );
+          : await resolveStreamUpstream(reference.streamUrl, lanHost, streamCtx.allowedHosts);
       const ticket = await this.tickets.issue({
         upstreamUrl: upstream,
         protocolHint: reference.protocolHint,
@@ -88,8 +85,8 @@ export class AuthorizePlaybackUseCase {
       });
       proxied = {
         ...reference,
-        // Los clientes de la LAN no alcanzan el IP público de XUI; el API sí.
-        // Se mantiene delivery=direct porque las apps lo validan así.
+        // El teléfono abre el origen de la API; el backend sigue movie → /vauth/ en el XUI.
+        delivery: 'proxy',
         streamUrl: `${trimSlash(input.publicApiBase)}/playback/media/${ticket.id}`,
       };
     } catch (error) {
@@ -125,6 +122,35 @@ export class AuthorizePlaybackUseCase {
       },
     });
     return proxied;
+  }
+
+  /**
+   * Línea demo: hosts y base del XUI de pruebas. Resto: XUI productivo.
+   * Sin esto, `mapServerInfo`/`buildPlaybackReference` rechazan `200.3.195.11`
+   * y el proxy reescribe al host productivo.
+   */
+  private streamContext(credentials: { username: string }): {
+    allowedHosts: readonly string[];
+    baseUrl: string;
+    demo: boolean;
+  } {
+    const demo =
+      this.config.demoLoginEnabled === true &&
+      !!this.config.demoLoginUsername &&
+      credentials.username === this.config.demoLoginUsername &&
+      !!this.config.demoXuiBaseUrl;
+    if (demo) {
+      return {
+        allowedHosts: this.config.demoXuiAllowedStreamHosts,
+        baseUrl: this.config.demoXuiBaseUrl!,
+        demo: true,
+      };
+    }
+    return {
+      allowedHosts: this.config.xuiAllowedStreamHosts,
+      baseUrl: this.config.xuiBaseUrl,
+      demo: false,
+    };
   }
 
   private async select(

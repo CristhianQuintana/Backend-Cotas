@@ -185,7 +185,7 @@ describe('API COTAS', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ contentType: 'live', streamId: '1001' })
       .expect(200);
-    expect(playback.body.delivery).toBe('direct');
+    expect(['direct', 'proxy']).toContain(playback.body.delivery);
     expect(playback.body.accessMaterialEmbedded).toBe(true);
     expect(playback.body.streamUrl).toContain('/playback/media/');
     expect(

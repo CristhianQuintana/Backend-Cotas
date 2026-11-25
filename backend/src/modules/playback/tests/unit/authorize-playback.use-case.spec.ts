@@ -14,6 +14,11 @@ describe('AuthorizePlaybackUseCase', () => {
     nodeEnv: 'test',
     xuiBaseUrl: 'http://xui.test.local:25461',
     xuiAllowedStreamHosts: ['xui.test.local', 'stream.test.local'],
+    demoLoginEnabled: true,
+    demoXuiBaseUrl: 'http://200.3.195.11',
+    demoLoginUsername: 'demo123',
+    demoLoginPassword: 'demo123',
+    demoXuiAllowedStreamHosts: ['200.3.195.11'],
   } as AppConfig;
 
   function harness(overrides?: {
@@ -51,7 +56,7 @@ describe('AuthorizePlaybackUseCase', () => {
       lines as never,
       tickets as unknown as PlaybackMediaTicketStore,
     );
-    return { useCase, audit, tickets, xui };
+    return { useCase, audit, tickets, xui, lines };
   }
 
   const user = {
@@ -70,8 +75,44 @@ describe('AuthorizePlaybackUseCase', () => {
       meta,
     );
     expect(result.streamUrl).toContain('/playback/media/ticket-1');
+    expect(result.delivery).toBe('proxy');
+    expect(result.accessMaterialEmbedded).toBe(true);
     expect(tickets.issue).toHaveBeenCalled();
     expect(audit.record).toHaveBeenCalledWith(expect.objectContaining({ result: 'success' }));
+  });
+
+  it('LOGIN DEMO: autoriza VOD con hosts del XUI demo (no los productivos)', async () => {
+    const { useCase, lines, xui, tickets } = harness({
+      vod: [{ id: '1', name: 'Video Demo', containerExtension: 'mp4' }],
+    });
+    lines.credentialsFor.mockResolvedValue({ username: 'demo123', password: 'demo123' });
+    xui.getServerInfo.mockResolvedValue({
+      host: '200.3.195.11',
+      port: '80',
+      protocol: 'http',
+    });
+    const result = await useCase.execute(
+      user,
+      { contentType: 'vod', streamId: '1', publicApiBase: 'https://api.cotasperu.com/api/v1' },
+      meta,
+    );
+    expect(result).toMatchObject({
+      contentType: 'vod',
+      streamId: '1',
+      title: 'Video Demo',
+      delivery: 'proxy',
+      protocolHint: 'progressive',
+      accessMaterialEmbedded: true,
+    });
+    expect(result.streamUrl).toBe(
+      'https://api.cotasperu.com/api/v1/playback/media/ticket-1',
+    );
+    expect(tickets.issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        upstreamUrl: 'http://200.3.195.11:80/movie/demo123/demo123/1.mp4',
+        protocolHint: 'progressive',
+      }),
+    );
   });
 
   it('autoriza vod y series', async () => {

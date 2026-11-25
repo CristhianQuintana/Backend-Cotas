@@ -5,7 +5,8 @@ export interface PlaybackReference {
   contentType: 'live' | 'vod' | 'series';
   streamId: string;
   title: string;
-  delivery: 'direct';
+  /** `proxy` = streamUrl bajo el origen de la API; `direct` = legado / tests. */
+  delivery: 'direct' | 'proxy';
   protocolHint: 'hls' | 'progressive';
   streamUrl: string;
   expiresAt: null;

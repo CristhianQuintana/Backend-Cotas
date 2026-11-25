@@ -91,7 +91,7 @@ export class PlaybackController {
       res,
       publicApiBase: publicApiBaseFromRequest(req),
       rewritePlaylist: ticket.protocolHint === 'hls',
-      allowedHosts: this.config.xuiAllowedStreamHosts,
+      allowedHosts: playbackAllowedHosts(this.config),
       allowUpstreamRetry: true,
       onDone: () => this.releaseProxySlot(),
     });
@@ -132,7 +132,7 @@ export class PlaybackController {
       res,
       publicApiBase: publicApiBaseFromRequest(req),
       rewritePlaylist: false,
-      allowedHosts: this.config.xuiAllowedStreamHosts,
+      allowedHosts: playbackAllowedHosts(this.config),
       allowUpstreamRetry: false,
       onDone: () => this.releaseProxySlot(),
     });
@@ -189,6 +189,19 @@ export class PlaybackController {
     }
     this.activeProxies = Math.max(0, this.activeProxies - 1);
   }
+}
+
+/** Hosts de media: XUI productivo + XUI demo (si está activo). */
+function playbackAllowedHosts(config: AppConfig): string[] {
+  const hosts = [...config.xuiAllowedStreamHosts];
+  if (config.demoLoginEnabled) {
+    for (const host of config.demoXuiAllowedStreamHosts) {
+      if (!hosts.includes(host)) {
+        hosts.push(host);
+      }
+    }
+  }
+  return hosts;
 }
 
 function publicApiBaseFromRequest(req: Request): string {
