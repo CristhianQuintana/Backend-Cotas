@@ -104,9 +104,7 @@ describe('AuthorizePlaybackUseCase', () => {
       protocolHint: 'progressive',
       accessMaterialEmbedded: true,
     });
-    expect(result.streamUrl).toBe(
-      'https://api.cotasperu.com/api/v1/playback/media/ticket-1',
-    );
+    expect(result.streamUrl).toBe('https://api.cotasperu.com/api/v1/playback/media/ticket-1');
     expect(tickets.issue).toHaveBeenCalledWith(
       expect.objectContaining({
         upstreamUrl: 'http://200.3.195.11:80/movie/demo123/demo123/1.mp4',
