@@ -23,8 +23,8 @@ Se añadió una **cuenta demo** en el modo LOGIN:
 - Usuario: `demo123`
 - Contraseña: `demo123`
 - Acceso: **desde cualquier red** (dentro o fuera de la empresa)
-- Panel XUI demo (servidor de pruebas): `http://10.10.0.29` (`player_api.php`)
-- El panel web de administración (`/cotasapp/dashboard`) es solo operación interna; **las apps no lo usan**
+- Panel XUI demo (servidor de pruebas): `http://200.3.195.11` (`player_api.php`; IP pública)
+- El panel web de administración es solo operación interna; **las apps no lo usan** para LOGIN
 
 El resto de líneas LOGIN COTAS **sigue restringido** a la red corporativa.
 
@@ -68,7 +68,7 @@ Tras el login, el resto del contrato es el de siempre:
 - `Authorization: Bearer <accessToken>`
 - `POST /api/v1/auth/refresh` con el `refreshToken`
 - Catálogo: `GET /api/v1/catalog/...`
-- Reproducción: `POST /api/v1/playback/authorizations` (usar la URL/ticket que devuelve el backend; **no** abrir `10.10.0.29` desde la app si el usuario está fuera de la LAN)
+- Reproducción: `POST /api/v1/playback/authorizations` (usar la URL/ticket que devuelve el backend; preferir el proxy/ticket COTAS)
 
 ## 3. Qué deben hacer las apps (móvil y TV)
 
@@ -127,17 +127,17 @@ Variables (ya previstas en despliegue de pruebas):
 | Variable | Valor típico pruebas |
 | --- | --- |
 | `DEMO_LOGIN_ENABLED` | `true` |
-| `DEMO_XUI_BASE_URL` | `http://10.10.0.29` |
+| `DEMO_XUI_BASE_URL` | `http://200.3.195.11` |
 | `DEMO_LOGIN_USERNAME` | `demo123` |
 | `DEMO_LOGIN_PASSWORD` | `demo123` |
 | `DEMO_XUI_ALLOW_INSECURE_HTTP` | `true` |
-| `DEMO_XUI_ALLOWED_STREAM_HOSTS` | `10.10.0.29` |
+| `DEMO_XUI_ALLOWED_STREAM_HOSTS` | `200.3.195.11` |
 
 ## 7. Limitaciones conocidas
 
-- El XUI demo en `10.10.0.29` está en la LAN de la empresa: el **backend** (que sí está en esa red) es quien lo consulta. Las apps externas no deben llamar a `10.10.0.29` directamente.
-- El catálogo del usuario demo puede venir vacío si el panel demo aún no tiene paquetes asignados; eso es dato del panel, no un fallo del login.
-- La cuenta demo es de **pruebas**; no usar credenciales de administración del panel (`cotasadmin`) en las apps.
+- El XUI demo tiene IP pública `200.3.195.11` (STREAM CODE ya probado contra ella). El LOGIN COTAS sigue yendo por `https://api.cotasperu.com`; el backend consulta ese panel.
+- El catálogo del usuario demo depende de lo cargado en el panel; vacío no implica fallo de login.
+- La cuenta demo es de **pruebas**; no usar credenciales de administración del panel en las apps.
 
 ## 8. Checklist de integración
 

@@ -117,9 +117,9 @@ jobs:
           DEPLOY_LOGIN_COTAS_TRUST_FORWARDED_FOR: ${{ vars.LOGIN_COTAS_TRUST_FORWARDED_FOR || 'true' }}
           # LOGIN DEMO (XUI aparte, accesible desde cualquier red vía POST /auth/login).
           DEPLOY_DEMO_LOGIN_ENABLED: ${{ vars.DEMO_LOGIN_ENABLED || 'true' }}
-          DEPLOY_DEMO_XUI_BASE_URL: ${{ vars.DEMO_XUI_BASE_URL || 'http://10.10.0.29' }}
+          DEPLOY_DEMO_XUI_BASE_URL: ${{ vars.DEMO_XUI_BASE_URL || 'http://200.3.195.11' }}
           DEPLOY_DEMO_LOGIN_USERNAME: ${{ vars.DEMO_LOGIN_USERNAME || 'demo123' }}
           DEPLOY_DEMO_LOGIN_PASSWORD: ${{ secrets.DEMO_LOGIN_PASSWORD || 'demo123' }}
           DEPLOY_DEMO_XUI_ALLOW_INSECURE_HTTP: ${{ vars.DEMO_XUI_ALLOW_INSECURE_HTTP || 'true' }}
-          DEPLOY_DEMO_XUI_ALLOWED_STREAM_HOSTS: ${{ vars.DEMO_XUI_ALLOWED_STREAM_HOSTS || '10.10.0.29' }}
+          DEPLOY_DEMO_XUI_ALLOWED_STREAM_HOSTS: ${{ vars.DEMO_XUI_ALLOWED_STREAM_HOSTS || '200.3.195.11' }}
         run: bash backend/scripts/server-deploy.sh "${{ steps.target.outputs.action }}"
